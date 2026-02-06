@@ -1,6 +1,6 @@
 {
   "name": "Lazard LCOS v10.0 - 2025",
-  "version": "10.0",
+  "version": "10.1",
   "source": "Lazard Levelized Cost of Storage Analysis",
   "url": "https://www.lazard.com/research-insights/levelized-cost-of-storage/",
   "date_published": "2025-03-01",
@@ -10,7 +10,14 @@
     "fom_per_kw_year": 22,
     "vom_per_mwh": 0.5,
     "augmentation_per_kwh": 50,
-    "decommissioning_per_kw": 8
+    "decommissioning_per_kw": 8,
+    "itc_percent": 0.30,
+    "itc_adders": 0.0,
+    "interconnection_per_kw": 90,
+    "land_per_kw": 8,
+    "permitting_per_kw": 12,
+    "insurance_pct_of_capex": 0.005,
+    "property_tax_pct": 0.01
   },
 
   "technology": {
@@ -29,7 +36,8 @@
       "escalation": 0.02,
       "description": "Capacity credit value for system reliability",
       "data_source": "Lazard LCOS v10.0",
-      "citation": "Lazard. Lazard's Levelized Cost of Storage Analysis, Version 10.0. March 2025."
+      "citation": "Lazard. Lazard's Levelized Cost of Storage Analysis, Version 10.0. March 2025.",
+      "category": "common"
     },
     {
       "name": "Energy Arbitrage",
@@ -37,7 +45,8 @@
       "escalation": 0.02,
       "description": "Energy price arbitrage from daily charge/discharge cycles",
       "data_source": "Lazard LCOS v10.0",
-      "citation": "Lazard. Lazard's Levelized Cost of Storage Analysis, Version 10.0. March 2025."
+      "citation": "Lazard. Lazard's Levelized Cost of Storage Analysis, Version 10.0. March 2025.",
+      "category": "common"
     },
     {
       "name": "Ancillary Services",
@@ -45,7 +54,8 @@
       "escalation": 0.01,
       "description": "Frequency regulation revenue",
       "data_source": "Lazard LCOS v10.0",
-      "citation": "Lazard. Lazard's Levelized Cost of Storage Analysis, Version 10.0. March 2025."
+      "citation": "Lazard. Lazard's Levelized Cost of Storage Analysis, Version 10.0. March 2025.",
+      "category": "common"
     },
     {
       "name": "T&D Deferral",
@@ -53,7 +63,44 @@
       "escalation": 0.015,
       "description": "Avoided transmission and distribution capacity investment through peak shaving",
       "data_source": "Lazard LCOS v10.0",
-      "citation": "Lazard. Lazard's Levelized Cost of Storage Analysis, Version 10.0. March 2025."
+      "citation": "Lazard. Lazard's Levelized Cost of Storage Analysis, Version 10.0. March 2025.",
+      "category": "common"
+    },
+    {
+      "name": "Resilience Value",
+      "annual_value_per_kw": 45,
+      "escalation": 0.02,
+      "description": "Avoided outage costs and improved grid reliability for critical loads",
+      "data_source": "ICE Calculator, LBNL",
+      "citation": "Lawrence Berkeley National Laboratory. Interruption Cost Estimate (ICE) Calculator. 2024.",
+      "category": "common"
+    },
+    {
+      "name": "Renewable Integration",
+      "annual_value_per_kw": 20,
+      "escalation": 0.02,
+      "description": "Avoided renewable curtailment and improved utilization of variable generation",
+      "data_source": "NREL Grid Integration Studies",
+      "citation": "NREL. The Value of Energy Storage for Grid Applications. Technical Report NREL/TP-6A20-74426.",
+      "category": "bess_specific"
+    },
+    {
+      "name": "GHG Emissions Value",
+      "annual_value_per_kw": 12,
+      "escalation": 0.03,
+      "description": "Value of avoided CO2 emissions by displacing marginal fossil generation",
+      "data_source": "EPA Social Cost of Carbon",
+      "citation": "EPA. Social Cost of Greenhouse Gases. Technical Support Document. 2024.",
+      "category": "bess_specific"
+    },
+    {
+      "name": "Voltage Support",
+      "annual_value_per_kw": 6,
+      "escalation": 0.01,
+      "description": "Distribution-level voltage regulation and power quality improvement",
+      "data_source": "EPRI Distribution System Studies",
+      "citation": "EPRI. Grid Energy Storage: Value to Distribution Systems. Technical Report 3002020045.",
+      "category": "common"
     }
   ],
 
@@ -64,5 +111,11 @@
     "citation": "BloombergNEF. Battery Price Survey 2025. Lazard analysis."
   },
 
-  "notes": "Based on Lazard LCOS v10.0 midpoint assumptions for utility-scale 100 MW / 400 MWh LFP system. Costs represent merchant project structure."
+  "ownership": {
+    "utility_wacc": 0.065,
+    "merchant_wacc": 0.09,
+    "description": "Weighted average cost of capital by ownership type"
+  },
+
+  "notes": "Based on Lazard LCOS v10.0 midpoint assumptions for utility-scale 100 MW / 400 MWh LFP system. ITC at 30% base rate under IRA. Benefits categorized as 'common' (applicable to all infrastructure projects) or 'bess_specific' (unique to energy storage)."
 }

@@ -1,6 +1,6 @@
 {
   "name": "NREL ATB 2024 - Moderate Scenario",
-  "version": "2024.1",
+  "version": "2024.2",
   "source": "NREL Annual Technology Baseline",
   "url": "https://atb.nrel.gov/electricity/2024/utility-scale_battery_storage",
   "date_published": "2024-04-15",
@@ -10,7 +10,14 @@
     "fom_per_kw_year": 25,
     "vom_per_mwh": 0,
     "augmentation_per_kwh": 55,
-    "decommissioning_per_kw": 10
+    "decommissioning_per_kw": 10,
+    "itc_percent": 0.30,
+    "itc_adders": 0.0,
+    "interconnection_per_kw": 100,
+    "land_per_kw": 10,
+    "permitting_per_kw": 15,
+    "insurance_pct_of_capex": 0.005,
+    "property_tax_pct": 0.01
   },
 
   "technology": {
@@ -27,25 +34,28 @@
       "name": "Resource Adequacy",
       "annual_value_per_kw": 150,
       "escalation": 0.02,
-      "description": "Capacity value in CAISO/CPUC RA market",
+      "description": "Capacity value for meeting system peak demand and reserve margin requirements",
       "data_source": "CPUC RA Reports 2024",
-      "citation": "California Public Utilities Commission. 2024 Resource Adequacy Report. November 2024."
+      "citation": "California Public Utilities Commission. 2024 Resource Adequacy Report. November 2024.",
+      "category": "common"
     },
     {
       "name": "Energy Arbitrage",
       "annual_value_per_kw": 40,
       "escalation": 0.015,
-      "description": "Peak/off-peak price spread revenue",
+      "description": "Peak/off-peak price spread revenue from time-shifting energy",
       "data_source": "CAISO market data",
-      "citation": "California ISO. Market Performance Reports 2024."
+      "citation": "California ISO. Market Performance Reports 2024.",
+      "category": "common"
     },
     {
       "name": "Ancillary Services",
       "annual_value_per_kw": 15,
       "escalation": 0.01,
-      "description": "Frequency regulation and spinning reserve revenue",
+      "description": "Frequency regulation and spinning reserve services",
       "data_source": "CAISO AS market data",
-      "citation": "California ISO. Ancillary Services Market Reports 2024."
+      "citation": "California ISO. Ancillary Services Market Reports 2024.",
+      "category": "common"
     },
     {
       "name": "T&D Deferral",
@@ -53,7 +63,44 @@
       "escalation": 0.02,
       "description": "Avoided/deferred transmission and distribution infrastructure upgrades through peak load management",
       "data_source": "CPUC Avoided Cost Calculator",
-      "citation": "E3. CPUC Avoided Cost Calculator 2024. Energy and Environmental Economics, Inc."
+      "citation": "E3. CPUC Avoided Cost Calculator 2024. Energy and Environmental Economics, Inc.",
+      "category": "common"
+    },
+    {
+      "name": "Resilience Value",
+      "annual_value_per_kw": 50,
+      "escalation": 0.02,
+      "description": "Avoided outage costs and improved grid reliability for critical loads during emergencies",
+      "data_source": "LBNL Interruption Cost Estimate Calculator",
+      "citation": "Lawrence Berkeley National Laboratory. Interruption Cost Estimate (ICE) Calculator. 2024.",
+      "category": "common"
+    },
+    {
+      "name": "Renewable Integration",
+      "annual_value_per_kw": 25,
+      "escalation": 0.02,
+      "description": "Avoided renewable curtailment and improved utilization of variable generation resources",
+      "data_source": "NREL Grid Integration Studies",
+      "citation": "NREL. The Value of Energy Storage for Grid Applications. Technical Report NREL/TP-6A20-74426.",
+      "category": "bess_specific"
+    },
+    {
+      "name": "GHG Emissions Value",
+      "annual_value_per_kw": 15,
+      "escalation": 0.03,
+      "description": "Value of avoided CO2 emissions by displacing marginal fossil generation",
+      "data_source": "EPA Social Cost of Carbon",
+      "citation": "EPA. Social Cost of Greenhouse Gases. Technical Support Document. 2024.",
+      "category": "bess_specific"
+    },
+    {
+      "name": "Voltage Support",
+      "annual_value_per_kw": 8,
+      "escalation": 0.01,
+      "description": "Distribution-level voltage regulation and power quality improvement services",
+      "data_source": "EPRI Distribution System Studies",
+      "citation": "EPRI. Grid Energy Storage: Value to Distribution Systems. Technical Report 3002020045.",
+      "category": "common"
     }
   ],
 
@@ -64,5 +111,11 @@
     "citation": "NREL ATB 2024 - Moderate scenario projects 12% annual cost decline through 2030"
   },
 
-  "notes": "Moderate cost scenario from median of 16 industry sources. 4-hour lithium-ion LFP system. See NREL ATB 2024 documentation for full methodology."
+  "ownership": {
+    "utility_wacc": 0.065,
+    "merchant_wacc": 0.09,
+    "description": "Weighted average cost of capital by ownership type"
+  },
+
+  "notes": "Moderate cost scenario from median of 16 industry sources. 4-hour lithium-ion LFP system. ITC at 30% base rate under IRA. Benefits categorized as 'common' (applicable to all infrastructure projects) or 'bess_specific' (unique to energy storage). See NREL ATB 2024 documentation for full methodology."
 }

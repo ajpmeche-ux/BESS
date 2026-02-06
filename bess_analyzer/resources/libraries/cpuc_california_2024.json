@@ -1,6 +1,6 @@
 {
   "name": "CPUC California 2024",
-  "version": "2024.1",
+  "version": "2024.2",
   "source": "California Public Utilities Commission",
   "url": "https://www.cpuc.ca.gov/industries-and-topics/electrical-energy/demand-side-management",
   "date_published": "2024-11-01",
@@ -10,7 +10,14 @@
     "fom_per_kw_year": 26,
     "vom_per_mwh": 0,
     "augmentation_per_kwh": 52,
-    "decommissioning_per_kw": 12
+    "decommissioning_per_kw": 12,
+    "itc_percent": 0.30,
+    "itc_adders": 0.10,
+    "interconnection_per_kw": 120,
+    "land_per_kw": 15,
+    "permitting_per_kw": 20,
+    "insurance_pct_of_capex": 0.005,
+    "property_tax_pct": 0.0105
   },
 
   "technology": {
@@ -29,15 +36,17 @@
       "escalation": 0.025,
       "description": "System and local RA capacity value in CPUC framework",
       "data_source": "CPUC RA Program 2024",
-      "citation": "California Public Utilities Commission. 2024 Resource Adequacy Report. D.24-06-050. November 2024."
+      "citation": "California Public Utilities Commission. 2024 Resource Adequacy Report. D.24-06-050. November 2024.",
+      "category": "common"
     },
     {
       "name": "Energy Arbitrage",
       "annual_value_per_kw": 35,
       "escalation": 0.02,
-      "description": "Day-ahead and real-time energy price arbitrage in CAISO",
+      "description": "Day-ahead and real-time energy price arbitrage",
       "data_source": "CAISO OASIS",
-      "citation": "California ISO. OASIS Market Data, 2024 Annual Summary."
+      "citation": "California ISO. OASIS Market Data, 2024 Annual Summary.",
+      "category": "common"
     },
     {
       "name": "T&D Deferral",
@@ -45,7 +54,8 @@
       "escalation": 0.015,
       "description": "Avoided transmission and distribution infrastructure investment",
       "data_source": "CPUC Avoided Cost Calculator 2024",
-      "citation": "E3. 2024 Avoided Cost Calculator. Prepared for CPUC. October 2024."
+      "citation": "E3. 2024 Avoided Cost Calculator. Prepared for CPUC. October 2024.",
+      "category": "common"
     },
     {
       "name": "Ancillary Services",
@@ -53,7 +63,44 @@
       "escalation": 0.01,
       "description": "Frequency regulation, spinning reserves, and flexible ramping product",
       "data_source": "CAISO AS market",
-      "citation": "California ISO. Ancillary Services Annual Report 2024."
+      "citation": "California ISO. Ancillary Services Annual Report 2024.",
+      "category": "common"
+    },
+    {
+      "name": "Resilience Value",
+      "annual_value_per_kw": 60,
+      "escalation": 0.02,
+      "description": "Avoided outage costs reflecting California's PSPS events and wildfire risk",
+      "data_source": "CPUC PSPS Cost Analysis",
+      "citation": "California Public Utilities Commission. Public Safety Power Shutoff Cost Analysis. 2024.",
+      "category": "common"
+    },
+    {
+      "name": "Renewable Integration",
+      "annual_value_per_kw": 30,
+      "escalation": 0.025,
+      "description": "Avoided renewable curtailment supporting California's 100% clean energy goal",
+      "data_source": "CAISO Renewables Curtailment Reports",
+      "citation": "California ISO. Managing Oversupply Report. 2024.",
+      "category": "bess_specific"
+    },
+    {
+      "name": "GHG Emissions Value",
+      "annual_value_per_kw": 20,
+      "escalation": 0.03,
+      "description": "Value of avoided CO2 using California carbon price",
+      "data_source": "CARB Cap-and-Trade",
+      "citation": "California Air Resources Board. Cap-and-Trade Auction Results. 2024.",
+      "category": "bess_specific"
+    },
+    {
+      "name": "Voltage Support",
+      "annual_value_per_kw": 10,
+      "escalation": 0.01,
+      "description": "Distribution-level voltage regulation and power quality services",
+      "data_source": "IOU Distribution Planning",
+      "citation": "PG&E, SCE, SDG&E. Distribution Resource Plans. 2024.",
+      "category": "common"
     }
   ],
 
@@ -64,5 +111,11 @@
     "citation": "E3. California Energy Storage Cost Analysis 2024. Prepared for CPUC."
   },
 
-  "notes": "California-specific assumptions reflecting CPUC Standard Practice Manual methodology. RA values reflect premium California capacity market. T&D deferral value applicable to constrained areas. All benefits are societal test perspective."
+  "ownership": {
+    "utility_wacc": 0.068,
+    "merchant_wacc": 0.095,
+    "description": "Weighted average cost of capital by ownership type (California-specific)"
+  },
+
+  "notes": "California-specific assumptions reflecting CPUC Standard Practice Manual methodology. RA values reflect premium California capacity market. T&D deferral value applicable to constrained areas. ITC includes 10% energy community adder common in California. Property tax at California average 1.05%. Benefits categorized as 'common' (applicable to all infrastructure projects) or 'bess_specific' (unique to energy storage). All benefits use societal test perspective."
 }

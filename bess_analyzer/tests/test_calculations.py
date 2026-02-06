@@ -242,11 +242,19 @@ class TestProjectEconomics:
         assert results.annual_benefits[0] == 0.0
 
     def test_economics_capex_at_year0(self):
-        """Year 0 cost should equal total CapEx."""
+        """Year 0 cost should include CapEx, infrastructure, minus ITC."""
         project = self._make_project()
         results = calculate_project_economics(project)
-        expected_capex = 160 * 400_000  # $160/kWh * 400,000 kWh
-        assert abs(results.annual_costs[0] - expected_capex) < 1.0
+        # Battery CapEx
+        battery_capex = 160 * 400_000  # $160/kWh * 400,000 kWh = $64M
+        # Infrastructure costs (default values: interconnection $100, land $10, permitting $15)
+        capacity_kw = 100_000
+        infra_costs = (100 + 10 + 15) * capacity_kw  # $12.5M
+        total_capex = battery_capex + infra_costs
+        # ITC applies to battery only (default 30%)
+        itc_credit = battery_capex * 0.30  # $19.2M
+        expected_year0 = total_capex - itc_credit  # $64M + $12.5M - $19.2M = $57.3M
+        assert abs(results.annual_costs[0] - expected_year0) < 1.0
 
 
 # ---- Validation Tests ----
@@ -435,3 +443,226 @@ class TestLearningCurve:
         import pytest
         with pytest.raises(ValueError):
             CostInputs(learning_rate=0.50)  # Too high
+
+
+# ---- ITC and Infrastructure Cost Tests ----
+
+class TestITCAndInfrastructure:
+    def test_itc_reduces_year0_costs(self):
+        """ITC should reduce Year 0 capital costs."""
+        basics = ProjectBasics(
+            name="ITC Test",
+            capacity_mw=100,
+            duration_hours=4,
+            analysis_period_years=20,
+            discount_rate=0.07,
+        )
+        tech = TechnologySpecs()
+        # With ITC at 30%
+        costs_with_itc = CostInputs(
+            capex_per_kwh=160,
+            itc_percent=0.30,
+            itc_adders=0.0,
+        )
+        # Without ITC
+        costs_without_itc = CostInputs(
+            capex_per_kwh=160,
+            itc_percent=0.0,
+            itc_adders=0.0,
+        )
+        benefits = [BenefitStream(name="RA", annual_values=[15_000_000] * 20)]
+
+        project_with_itc = Project(basics=basics, technology=tech, costs=costs_with_itc, benefits=benefits)
+        project_without_itc = Project(basics=basics, technology=tech, costs=costs_without_itc, benefits=benefits)
+
+        results_with = calculate_project_economics(project_with_itc)
+        results_without = calculate_project_economics(project_without_itc)
+
+        # Year 0 costs should be lower with ITC
+        assert results_with.annual_costs[0] < results_without.annual_costs[0]
+        # ITC credit should be 30% of battery CapEx
+        battery_capex = 160 * 400_000  # $64M
+        expected_itc = battery_capex * 0.30  # $19.2M
+        year0_diff = results_without.annual_costs[0] - results_with.annual_costs[0]
+        assert abs(year0_diff - expected_itc) < 1000  # Allow small rounding
+
+    def test_itc_adders_stack(self):
+        """ITC adders should stack with base ITC."""
+        basics = ProjectBasics(capacity_mw=100, duration_hours=4)
+        tech = TechnologySpecs()
+        # 30% base + 10% adders = 40% total
+        costs = CostInputs(capex_per_kwh=160, itc_percent=0.30, itc_adders=0.10)
+        benefits = [BenefitStream(name="RA", annual_values=[15_000_000] * 20)]
+        project = Project(basics=basics, technology=tech, costs=costs, benefits=benefits)
+
+        results = calculate_project_economics(project)
+
+        # Total ITC should be 40%
+        battery_capex = 160 * 400_000
+        infrastructure = 100 * 100_000 + 10 * 100_000 + 15 * 100_000  # interconnect + land + permit
+        total_capex = battery_capex + infrastructure
+        expected_itc = battery_capex * 0.40  # ITC applies only to battery
+        expected_year0 = total_capex - expected_itc
+        assert abs(results.annual_costs[0] - expected_year0) < 1000
+
+    def test_infrastructure_costs_added_to_year0(self):
+        """Infrastructure costs should be added to Year 0."""
+        basics = ProjectBasics(capacity_mw=100, duration_hours=4)
+        tech = TechnologySpecs()
+        costs = CostInputs(
+            capex_per_kwh=160,
+            itc_percent=0.0,  # No ITC for clear comparison
+            interconnection_per_kw=100,
+            land_per_kw=10,
+            permitting_per_kw=15,
+        )
+        benefits = [BenefitStream(name="RA", annual_values=[15_000_000] * 20)]
+        project = Project(basics=basics, technology=tech, costs=costs, benefits=benefits)
+
+        results = calculate_project_economics(project)
+
+        capacity_kw = 100_000
+        capacity_kwh = 400_000
+        battery_capex = 160 * capacity_kwh
+        infra_costs = (100 + 10 + 15) * capacity_kw
+        expected_year0 = battery_capex + infra_costs
+        assert abs(results.annual_costs[0] - expected_year0) < 1.0
+
+    def test_insurance_added_to_annual_costs(self):
+        """Insurance should be added to annual operating costs."""
+        basics = ProjectBasics(capacity_mw=100, duration_hours=4)
+        tech = TechnologySpecs()
+        costs = CostInputs(
+            capex_per_kwh=160,
+            fom_per_kw_year=0,  # Zero out FOM for clear comparison
+            vom_per_mwh=0,
+            itc_percent=0.0,
+            insurance_pct_of_capex=0.01,  # 1% of CapEx
+            property_tax_pct=0.0,  # Zero out property tax
+        )
+        benefits = [BenefitStream(name="RA", annual_values=[15_000_000] * 20)]
+        project = Project(basics=basics, technology=tech, costs=costs, benefits=benefits)
+
+        results = calculate_project_economics(project)
+
+        # Total CapEx for insurance calculation
+        capacity_kw = 100_000
+        capacity_kwh = 400_000
+        total_capex = 160 * capacity_kwh + (100 + 10 + 15) * capacity_kw
+        expected_annual_insurance = total_capex * 0.01
+
+        # Year 1 should include insurance (no FOM, no VOM in this test)
+        # Note: There may be some property tax even at 0% due to implementation
+        assert results.annual_costs[1] >= expected_annual_insurance * 0.99  # Allow 1% tolerance
+
+    def test_property_tax_decreases_over_time(self):
+        """Property tax should decrease as asset depreciates."""
+        basics = ProjectBasics(capacity_mw=100, duration_hours=4, analysis_period_years=20)
+        tech = TechnologySpecs()
+        costs = CostInputs(
+            capex_per_kwh=160,
+            fom_per_kw_year=0,
+            vom_per_mwh=0,
+            itc_percent=0.0,
+            insurance_pct_of_capex=0.0,
+            property_tax_pct=0.01,
+        )
+        benefits = [BenefitStream(name="RA", annual_values=[15_000_000] * 20)]
+        project = Project(basics=basics, technology=tech, costs=costs, benefits=benefits)
+
+        results = calculate_project_economics(project)
+
+        # Property tax in year 1 should be higher than year 20
+        # (straight-line depreciation reduces book value)
+        assert results.annual_costs[1] > results.annual_costs[19]
+
+    def test_ownership_type_validation(self):
+        """Ownership type should be validated."""
+        import pytest
+        with pytest.raises(ValueError):
+            ProjectBasics(ownership_type="invalid")
+
+    def test_itc_percent_validation(self):
+        """ITC percent should be validated (0-50%)."""
+        import pytest
+        with pytest.raises(ValueError):
+            CostInputs(itc_percent=0.60)  # Too high
+
+    def test_itc_adders_validation(self):
+        """ITC adders should be validated (0-20%)."""
+        import pytest
+        with pytest.raises(ValueError):
+            CostInputs(itc_adders=0.25)  # Too high
+
+
+# ---- Library New Benefits Tests ----
+
+class TestLibraryNewBenefits:
+    def test_library_includes_resilience(self):
+        """Libraries should include Resilience Value benefit stream."""
+        lib = AssumptionLibrary()
+        names = lib.get_library_names()
+        project = Project()
+        nrel_name = [n for n in names if "NREL" in n][0]
+        lib.apply_library_to_project(project, nrel_name)
+        benefit_names = [b.name for b in project.benefits]
+        assert "Resilience Value" in benefit_names
+
+    def test_library_includes_renewable_integration(self):
+        """Libraries should include Renewable Integration benefit stream."""
+        lib = AssumptionLibrary()
+        names = lib.get_library_names()
+        project = Project()
+        nrel_name = [n for n in names if "NREL" in n][0]
+        lib.apply_library_to_project(project, nrel_name)
+        benefit_names = [b.name for b in project.benefits]
+        assert "Renewable Integration" in benefit_names
+
+    def test_library_includes_ghg_value(self):
+        """Libraries should include GHG Emissions Value benefit stream."""
+        lib = AssumptionLibrary()
+        names = lib.get_library_names()
+        project = Project()
+        nrel_name = [n for n in names if "NREL" in n][0]
+        lib.apply_library_to_project(project, nrel_name)
+        benefit_names = [b.name for b in project.benefits]
+        assert "GHG Emissions Value" in benefit_names
+
+    def test_library_includes_voltage_support(self):
+        """Libraries should include Voltage Support benefit stream."""
+        lib = AssumptionLibrary()
+        names = lib.get_library_names()
+        project = Project()
+        nrel_name = [n for n in names if "NREL" in n][0]
+        lib.apply_library_to_project(project, nrel_name)
+        benefit_names = [b.name for b in project.benefits]
+        assert "Voltage Support" in benefit_names
+
+    def test_library_loads_itc(self):
+        """Libraries should load ITC percent."""
+        lib = AssumptionLibrary()
+        names = lib.get_library_names()
+        project = Project()
+        nrel_name = [n for n in names if "NREL" in n][0]
+        lib.apply_library_to_project(project, nrel_name)
+        assert project.costs.itc_percent == 0.30
+
+    def test_library_loads_infrastructure_costs(self):
+        """Libraries should load infrastructure costs."""
+        lib = AssumptionLibrary()
+        names = lib.get_library_names()
+        project = Project()
+        nrel_name = [n for n in names if "NREL" in n][0]
+        lib.apply_library_to_project(project, nrel_name)
+        assert project.costs.interconnection_per_kw == 100
+        assert project.costs.land_per_kw == 10
+        assert project.costs.permitting_per_kw == 15
+
+    def test_cpuc_library_has_itc_adders(self):
+        """CPUC library should have ITC adders (energy community)."""
+        lib = AssumptionLibrary()
+        names = lib.get_library_names()
+        project = Project()
+        cpuc_name = [n for n in names if "CPUC" in n][0]
+        lib.apply_library_to_project(project, cpuc_name)
+        assert project.costs.itc_adders == 0.10  # 10% energy community adder

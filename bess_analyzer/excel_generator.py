@@ -109,6 +109,7 @@ def create_inputs_sheet(wb, styles):
         ('Energy Capacity (MWh)', 'Inputs!C10', '=C8*C9', 'Formula', 'Auto-calculated: MW × hours'),
         ('Analysis Period (years)', 'Inputs!C11', 20, 'Number', 'Economic analysis horizon'),
         ('Discount Rate (%)', 'Inputs!C12', 7.0, 'Percent', 'Nominal discount rate for NPV'),
+        ('Ownership Type', 'Inputs!C13', 'Utility', 'Text', 'Utility (lower WACC ~6-7%) or Merchant (~8-10%)'),
     ]
 
     for label, cell_ref, value, dtype, tooltip in inputs:
@@ -216,6 +217,61 @@ def create_inputs_sheet(wb, styles):
 
     row += 1
 
+    # Section: Tax Credits (BESS-Specific)
+    ws[f'B{row}'] = "TAX CREDITS (BESS-Specific under IRA)"
+    ws[f'B{row}'].style = styles['section']
+    ws.merge_cells(f'B{row}:E{row}')
+    row += 1
+
+    tax_inputs = [
+        ('ITC Base Rate (%)', 0.30, 'Percent', '30% Investment Tax Credit under IRA'),
+        ('ITC Adders (%)', 0.0, 'Percent', 'Energy community +10%, Domestic content +10%'),
+    ]
+
+    for label, value, dtype, tooltip in tax_inputs:
+        ws[f'B{row}'] = label
+        ws[f'B{row}'].font = Font(bold=True)
+        cell = ws[f'C{row}']
+        cell.value = value
+        cell.style = styles['input']
+        if dtype == 'Percent':
+            cell.number_format = '0.0%'
+        ws[f'E{row}'] = tooltip
+        ws[f'E{row}'].font = Font(italic=True, color='666666')
+        row += 1
+
+    row += 1
+
+    # Section: Infrastructure Costs (Common to all utility projects)
+    ws[f'B{row}'] = "INFRASTRUCTURE COSTS (Common to all projects)"
+    ws[f'B{row}'].style = styles['section']
+    ws.merge_cells(f'B{row}:E{row}')
+    row += 1
+
+    infra_inputs = [
+        ('Interconnection ($/kW)', 100, '$/kW', 'Network upgrades, studies'),
+        ('Land ($/kW)', 10, '$/kW', 'Site acquisition/lease'),
+        ('Permitting ($/kW)', 15, '$/kW', 'Permits, environmental review'),
+        ('Insurance (% of CapEx)', 0.005, 'Percent', 'Annual insurance cost'),
+        ('Property Tax (%)', 0.01, 'Percent', 'Annual property tax rate'),
+    ]
+
+    for label, value, dtype, tooltip in infra_inputs:
+        ws[f'B{row}'] = label
+        ws[f'B{row}'].font = Font(bold=True)
+        cell = ws[f'C{row}']
+        cell.value = value
+        cell.style = styles['input']
+        if dtype == 'Percent':
+            cell.number_format = '0.00%'
+        else:
+            cell.number_format = '$#,##0.00'
+        ws[f'E{row}'] = tooltip
+        ws[f'E{row}'].font = Font(italic=True, color='666666')
+        row += 1
+
+    row += 1
+
     # Section: Benefit Inputs
     ws[f'B{row}'] = "BENEFIT STREAMS (Year 1 Values)"
     ws[f'B{row}'].style = styles['section']
@@ -233,13 +289,17 @@ def create_inputs_sheet(wb, styles):
 
     benefits_start = row
     benefits = [
-        ('Resource Adequacy', 150, 0.02, 'CPUC RA Report 2024'),
-        ('Energy Arbitrage', 40, 0.015, 'CAISO Market Data 2024'),
-        ('Ancillary Services', 15, 0.01, 'CAISO AS Reports 2024'),
-        ('T&D Deferral', 25, 0.02, 'CPUC Avoided Cost Calculator 2024'),
+        ('Resource Adequacy', 150, 0.02, 'CPUC RA Report 2024', 'common'),
+        ('Energy Arbitrage', 40, 0.015, 'CAISO Market Data 2024', 'common'),
+        ('Ancillary Services', 15, 0.01, 'CAISO AS Reports 2024', 'common'),
+        ('T&D Deferral', 25, 0.02, 'CPUC Avoided Cost Calculator 2024', 'common'),
+        ('Resilience Value', 50, 0.02, 'LBNL ICE Calculator 2024', 'common'),
+        ('Renewable Integration', 25, 0.02, 'NREL Grid Integration Studies', 'bess_specific'),
+        ('GHG Emissions Value', 15, 0.03, 'EPA Social Cost of Carbon 2024', 'bess_specific'),
+        ('Voltage Support', 8, 0.01, 'EPRI Distribution Studies', 'common'),
     ]
 
-    for name, value, esc, cite in benefits:
+    for name, value, esc, cite, category in benefits:
         ws[f'B{row}'] = name
         ws[f'C{row}'] = value
         ws[f'C{row}'].style = styles['input']
@@ -247,7 +307,8 @@ def create_inputs_sheet(wb, styles):
         ws[f'D{row}'] = esc
         ws[f'D{row}'].style = styles['input']
         ws[f'D{row}'].number_format = '0.0%'
-        ws[f'E{row}'] = cite
+        # Add category indicator with citation
+        ws[f'E{row}'] = f"[{category}] {cite}"
         row += 1
 
     row += 1
@@ -900,16 +961,61 @@ def create_libraries_sheet(wb, styles):
 
     row += 1
 
+    # Tax Credits (BESS-Specific)
+    ws.cell(row=row, column=1, value="Tax Credits (BESS-Specific)")
+    ws.cell(row=row, column=1).font = Font(bold=True)
+    row += 1
+
+    tax_data = [
+        ('ITC Base Rate', '30%', '30%', '30%'),
+        ('ITC Adders', '0%', '0%', '10%'),
+    ]
+
+    for param, nrel, lazard, cpuc in tax_data:
+        ws.cell(row=row, column=1, value=param)
+        ws.cell(row=row, column=2, value=nrel)
+        ws.cell(row=row, column=3, value=lazard)
+        ws.cell(row=row, column=4, value=cpuc)
+        row += 1
+
+    row += 1
+
+    # Infrastructure Costs (Common)
+    ws.cell(row=row, column=1, value="Infrastructure Costs (Common)")
+    ws.cell(row=row, column=1).font = Font(bold=True)
+    row += 1
+
+    infra_data = [
+        ('Interconnection ($/kW)', 100, 90, 120),
+        ('Land ($/kW)', 10, 8, 15),
+        ('Permitting ($/kW)', 15, 12, 20),
+        ('Insurance (% of CapEx)', '0.5%', '0.5%', '0.5%'),
+        ('Property Tax (%)', '1.0%', '1.0%', '1.05%'),
+    ]
+
+    for param, nrel, lazard, cpuc in infra_data:
+        ws.cell(row=row, column=1, value=param)
+        ws.cell(row=row, column=2, value=nrel)
+        ws.cell(row=row, column=3, value=lazard)
+        ws.cell(row=row, column=4, value=cpuc)
+        row += 1
+
+    row += 1
+
     # Benefit parameters
     ws.cell(row=row, column=1, value="Benefit Streams ($/kW-yr)")
     ws.cell(row=row, column=1).font = Font(bold=True)
     row += 1
 
     benefit_data = [
-        ('Resource Adequacy', 150, 140, 180),
-        ('Energy Arbitrage', 40, 45, 35),
-        ('Ancillary Services', 15, 12, 10),
-        ('T&D Deferral', 25, 20, 25),
+        ('Resource Adequacy [common]', 150, 140, 180),
+        ('Energy Arbitrage [common]', 40, 45, 35),
+        ('Ancillary Services [common]', 15, 12, 10),
+        ('T&D Deferral [common]', 25, 20, 25),
+        ('Resilience Value [common]', 50, 45, 60),
+        ('Renewable Integration [bess]', 25, 20, 30),
+        ('GHG Emissions Value [bess]', 15, 12, 20),
+        ('Voltage Support [common]', 8, 6, 10),
     ]
 
     for param, nrel, lazard, cpuc in benefit_data:

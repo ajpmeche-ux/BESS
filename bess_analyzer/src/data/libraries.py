@@ -88,7 +88,7 @@ class AssumptionLibrary:
         n = project.basics.analysis_period_years
         capacity_kw = project.basics.capacity_mw * 1000
 
-        # Apply costs (including learning curve projections)
+        # Apply costs (including learning curve projections and infrastructure costs)
         cost_data = lib.get("costs", {})
         cost_projections = lib.get("cost_projections", {})
         project.costs = CostInputs(
@@ -99,6 +99,15 @@ class AssumptionLibrary:
             decommissioning_per_kw=cost_data.get("decommissioning_per_kw", project.costs.decommissioning_per_kw),
             learning_rate=cost_projections.get("learning_rate", 0.10),
             cost_base_year=cost_projections.get("base_year", 2024),
+            # Tax credits (BESS-specific)
+            itc_percent=cost_data.get("itc_percent", 0.30),
+            itc_adders=cost_data.get("itc_adders", 0.0),
+            # Infrastructure costs (common to all utility projects)
+            interconnection_per_kw=cost_data.get("interconnection_per_kw", 100.0),
+            land_per_kw=cost_data.get("land_per_kw", 10.0),
+            permitting_per_kw=cost_data.get("permitting_per_kw", 15.0),
+            insurance_pct_of_capex=cost_data.get("insurance_pct_of_capex", 0.005),
+            property_tax_pct=cost_data.get("property_tax_pct", 0.01),
         )
 
         # Apply technology specs

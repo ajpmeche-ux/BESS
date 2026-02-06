@@ -191,8 +191,25 @@ def calculate_project_economics(project: Project) -> FinancialResults:
     # --- Build annual cost stream ---
     annual_costs = [0.0] * (n + 1)
 
-    # Year 0: Capital expenditure
-    annual_costs[0] = costs.capex_per_kwh * capacity_kwh
+    # Year 0: Capital expenditure (battery system)
+    battery_capex = costs.capex_per_kwh * capacity_kwh
+
+    # Year 0: Infrastructure costs (common to all utility projects)
+    interconnection_cost = costs.interconnection_per_kw * capacity_kw
+    land_cost = costs.land_per_kw * capacity_kw
+    permitting_cost = costs.permitting_per_kw * capacity_kw
+    infrastructure_costs = interconnection_cost + land_cost + permitting_cost
+
+    # Total pre-ITC CapEx
+    total_capex = battery_capex + infrastructure_costs
+
+    # Apply Investment Tax Credit (BESS-specific under IRA)
+    # ITC applies only to the battery system, not infrastructure
+    total_itc_rate = costs.itc_percent + costs.itc_adders
+    itc_credit = battery_capex * total_itc_rate
+
+    # Year 0 net capital cost (after ITC)
+    annual_costs[0] = total_capex - itc_credit
 
     # Years 1-N: Fixed O&M
     for t in range(1, n + 1):
@@ -206,6 +223,19 @@ def calculate_project_economics(project: Project) -> FinancialResults:
             basics.capacity_mwh * 365 * tech.round_trip_efficiency * degradation_factor
         )
         annual_costs[t] += costs.vom_per_mwh * annual_discharge_mwh
+
+    # Years 1-N: Insurance (common to all utility projects)
+    # Based on percentage of total CapEx
+    annual_insurance = total_capex * costs.insurance_pct_of_capex
+    for t in range(1, n + 1):
+        annual_costs[t] += annual_insurance
+
+    # Years 1-N: Property taxes (common to all utility projects)
+    # Based on percentage of depreciating asset value (straight-line)
+    for t in range(1, n + 1):
+        # Simplified: property tax on remaining book value (straight-line depreciation)
+        remaining_value = total_capex * (1 - t / n)
+        annual_costs[t] += remaining_value * costs.property_tax_pct
 
     # Augmentation year: battery replacement cost (adjusted for learning curve)
     # Cost declines at learning_rate annually from base year

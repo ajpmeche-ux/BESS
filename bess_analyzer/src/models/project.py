@@ -24,6 +24,7 @@ class ProjectBasics:
         in_service_date: Expected commercial operation date.
         analysis_period_years: Economic analysis horizon (default 20).
         discount_rate: Nominal discount rate for NPV (default 0.07).
+        ownership_type: "utility" or "merchant" - affects WACC and tax treatment.
     """
 
     name: str = ""
@@ -35,6 +36,7 @@ class ProjectBasics:
     in_service_date: date = field(default_factory=lambda: date(2027, 1, 1))
     analysis_period_years: int = 20
     discount_rate: float = 0.07
+    ownership_type: str = "utility"  # "utility" or "merchant"
 
     def __post_init__(self):
         self.capacity_mwh = self.capacity_mw * self.duration_hours
@@ -46,6 +48,8 @@ class ProjectBasics:
             raise ValueError(f"analysis_period_years must be >= 1, got {self.analysis_period_years}")
         if not 0 < self.discount_rate < 1:
             raise ValueError(f"discount_rate must be between 0 and 1, got {self.discount_rate}")
+        if self.ownership_type not in ("utility", "merchant"):
+            raise ValueError(f"ownership_type must be 'utility' or 'merchant', got {self.ownership_type}")
 
     def to_dict(self) -> dict:
         return {
@@ -58,6 +62,7 @@ class ProjectBasics:
             "in_service_date": self.in_service_date.isoformat(),
             "analysis_period_years": self.analysis_period_years,
             "discount_rate": self.discount_rate,
+            "ownership_type": self.ownership_type,
         }
 
     @classmethod
@@ -66,6 +71,7 @@ class ProjectBasics:
         if "in_service_date" in data and isinstance(data["in_service_date"], str):
             data["in_service_date"] = date.fromisoformat(data["in_service_date"])
         data.pop("capacity_mwh", None)
+        data.setdefault("ownership_type", "utility")
         return cls(**data)
 
 
@@ -119,7 +125,8 @@ class CostInputs:
     """Project cost parameters.
 
     All costs are in real (constant) dollars. Includes learning curve
-    parameters to model cost declines over time.
+    parameters to model cost declines over time, plus common infrastructure
+    costs that apply to all utility projects.
 
     Attributes:
         capex_per_kwh: Installed capital cost per kWh of energy capacity.
@@ -129,6 +136,19 @@ class CostInputs:
         decommissioning_per_kw: End-of-life decommissioning cost per kW.
         learning_rate: Annual cost decline rate (0.10 = 10% annual decline).
         cost_base_year: Reference year for base costs (learning applied from this year).
+
+        # Tax credits (BESS-specific)
+        itc_percent: Investment Tax Credit percentage (0.30 = 30%). IRA base is 30%.
+        itc_adders: Additional ITC adders (energy community, domestic content, etc.).
+
+        # One-time costs (Common to all utility projects)
+        interconnection_per_kw: Interconnection/network upgrade costs ($/kW).
+        land_per_kw: Land acquisition or lease capitalized cost ($/kW).
+        permitting_per_kw: Permitting and environmental review costs ($/kW).
+
+        # Annual costs (Common to all utility projects)
+        insurance_pct_of_capex: Annual insurance as % of CapEx (0.01 = 1%).
+        property_tax_pct: Annual property tax as % of asset value (0.01 = 1%).
     """
 
     capex_per_kwh: float = 160.0
@@ -139,11 +159,28 @@ class CostInputs:
     learning_rate: float = 0.10
     cost_base_year: int = 2024
 
+    # Tax credits (BESS-specific under IRA)
+    itc_percent: float = 0.30  # 30% base ITC
+    itc_adders: float = 0.0  # Additional adders (energy community +10%, domestic content +10%)
+
+    # One-time costs (Common to all utility infrastructure projects)
+    interconnection_per_kw: float = 100.0  # $/kW - network upgrades, studies
+    land_per_kw: float = 10.0  # $/kW - site acquisition
+    permitting_per_kw: float = 15.0  # $/kW - permits, environmental review
+
+    # Annual costs (Common to all utility infrastructure projects)
+    insurance_pct_of_capex: float = 0.005  # 0.5% of CapEx annually
+    property_tax_pct: float = 0.01  # 1% of asset value annually
+
     def __post_init__(self):
         if self.capex_per_kwh < 0:
             raise ValueError(f"capex_per_kwh must be >= 0, got {self.capex_per_kwh}")
         if not 0 <= self.learning_rate <= 0.30:
             raise ValueError(f"learning_rate must be 0-0.30, got {self.learning_rate}")
+        if not 0 <= self.itc_percent <= 0.50:
+            raise ValueError(f"itc_percent must be 0-0.50, got {self.itc_percent}")
+        if not 0 <= self.itc_adders <= 0.20:
+            raise ValueError(f"itc_adders must be 0-0.20, got {self.itc_adders}")
 
     def get_augmentation_cost(self, years_from_base: int) -> float:
         """Calculate augmentation cost adjusted for learning curve.
@@ -181,14 +218,28 @@ class CostInputs:
             "decommissioning_per_kw": self.decommissioning_per_kw,
             "learning_rate": self.learning_rate,
             "cost_base_year": self.cost_base_year,
+            "itc_percent": self.itc_percent,
+            "itc_adders": self.itc_adders,
+            "interconnection_per_kw": self.interconnection_per_kw,
+            "land_per_kw": self.land_per_kw,
+            "permitting_per_kw": self.permitting_per_kw,
+            "insurance_pct_of_capex": self.insurance_pct_of_capex,
+            "property_tax_pct": self.property_tax_pct,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "CostInputs":
-        # Handle legacy data without learning curve fields
+        # Handle legacy data without newer fields
         data = dict(data)
         data.setdefault("learning_rate", 0.10)
         data.setdefault("cost_base_year", 2024)
+        data.setdefault("itc_percent", 0.30)
+        data.setdefault("itc_adders", 0.0)
+        data.setdefault("interconnection_per_kw", 100.0)
+        data.setdefault("land_per_kw", 10.0)
+        data.setdefault("permitting_per_kw", 15.0)
+        data.setdefault("insurance_pct_of_capex", 0.005)
+        data.setdefault("property_tax_pct", 0.01)
         return cls(**data)
 
 
