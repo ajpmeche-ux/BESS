@@ -1,0 +1,53 @@
+{
+  "name": "NREL ATB 2024 - Moderate Scenario",
+  "version": "2024.1",
+  "source": "NREL Annual Technology Baseline",
+  "url": "https://atb.nrel.gov/electricity/2024/utility-scale_battery_storage",
+  "date_published": "2024-04-15",
+
+  "costs": {
+    "capex_per_kwh": 160,
+    "fom_per_kw_year": 25,
+    "vom_per_mwh": 0,
+    "augmentation_per_kwh": 55,
+    "decommissioning_per_kw": 10
+  },
+
+  "technology": {
+    "chemistry": "LFP",
+    "round_trip_efficiency": 0.85,
+    "degradation_rate_annual": 0.025,
+    "cycle_life": 6000,
+    "warranty_years": 10,
+    "augmentation_year": 12
+  },
+
+  "benefits": [
+    {
+      "name": "Resource Adequacy",
+      "annual_value_per_kw": 150,
+      "escalation": 0.02,
+      "description": "Capacity value in CAISO/CPUC RA market",
+      "data_source": "CPUC RA Reports 2024",
+      "citation": "California Public Utilities Commission. 2024 Resource Adequacy Report. November 2024."
+    },
+    {
+      "name": "Energy Arbitrage",
+      "annual_value_per_kw": 40,
+      "escalation": 0.015,
+      "description": "Peak/off-peak price spread revenue",
+      "data_source": "CAISO market data",
+      "citation": "California ISO. Market Performance Reports 2024."
+    },
+    {
+      "name": "Ancillary Services",
+      "annual_value_per_kw": 15,
+      "escalation": 0.01,
+      "description": "Frequency regulation and spinning reserve revenue",
+      "data_source": "CAISO AS market data",
+      "citation": "California ISO. Ancillary Services Market Reports 2024."
+    }
+  ],
+
+  "notes": "Moderate cost scenario from median of 16 industry sources. 4-hour lithium-ion LFP system. See NREL ATB 2024 documentation for full methodology."
+}

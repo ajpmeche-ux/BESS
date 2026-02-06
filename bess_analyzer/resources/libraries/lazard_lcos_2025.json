@@ -1,0 +1,53 @@
+{
+  "name": "Lazard LCOS v10.0 - 2025",
+  "version": "10.0",
+  "source": "Lazard Levelized Cost of Storage Analysis",
+  "url": "https://www.lazard.com/research-insights/levelized-cost-of-storage/",
+  "date_published": "2025-03-01",
+
+  "costs": {
+    "capex_per_kwh": 145,
+    "fom_per_kw_year": 22,
+    "vom_per_mwh": 0.5,
+    "augmentation_per_kwh": 50,
+    "decommissioning_per_kw": 8
+  },
+
+  "technology": {
+    "chemistry": "LFP",
+    "round_trip_efficiency": 0.86,
+    "degradation_rate_annual": 0.02,
+    "cycle_life": 6500,
+    "warranty_years": 10,
+    "augmentation_year": 12
+  },
+
+  "benefits": [
+    {
+      "name": "Resource Adequacy",
+      "annual_value_per_kw": 140,
+      "escalation": 0.02,
+      "description": "Capacity credit value for system reliability",
+      "data_source": "Lazard LCOS v10.0",
+      "citation": "Lazard. Lazard's Levelized Cost of Storage Analysis, Version 10.0. March 2025."
+    },
+    {
+      "name": "Energy Arbitrage",
+      "annual_value_per_kw": 45,
+      "escalation": 0.02,
+      "description": "Energy price arbitrage from daily charge/discharge cycles",
+      "data_source": "Lazard LCOS v10.0",
+      "citation": "Lazard. Lazard's Levelized Cost of Storage Analysis, Version 10.0. March 2025."
+    },
+    {
+      "name": "Ancillary Services",
+      "annual_value_per_kw": 12,
+      "escalation": 0.01,
+      "description": "Frequency regulation revenue",
+      "data_source": "Lazard LCOS v10.0",
+      "citation": "Lazard. Lazard's Levelized Cost of Storage Analysis, Version 10.0. March 2025."
+    }
+  ],
+
+  "notes": "Based on Lazard LCOS v10.0 midpoint assumptions for utility-scale 100 MW / 400 MWh LFP system. Costs represent merchant project structure."
+}

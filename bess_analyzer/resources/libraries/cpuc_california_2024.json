@@ -1,0 +1,61 @@
+{
+  "name": "CPUC California 2024",
+  "version": "2024.1",
+  "source": "California Public Utilities Commission",
+  "url": "https://www.cpuc.ca.gov/industries-and-topics/electrical-energy/demand-side-management",
+  "date_published": "2024-11-01",
+
+  "costs": {
+    "capex_per_kwh": 155,
+    "fom_per_kw_year": 26,
+    "vom_per_mwh": 0,
+    "augmentation_per_kwh": 52,
+    "decommissioning_per_kw": 12
+  },
+
+  "technology": {
+    "chemistry": "LFP",
+    "round_trip_efficiency": 0.85,
+    "degradation_rate_annual": 0.025,
+    "cycle_life": 6000,
+    "warranty_years": 10,
+    "augmentation_year": 12
+  },
+
+  "benefits": [
+    {
+      "name": "Resource Adequacy",
+      "annual_value_per_kw": 180,
+      "escalation": 0.025,
+      "description": "System and local RA capacity value in CPUC framework",
+      "data_source": "CPUC RA Program 2024",
+      "citation": "California Public Utilities Commission. 2024 Resource Adequacy Report. D.24-06-050. November 2024."
+    },
+    {
+      "name": "Energy Arbitrage",
+      "annual_value_per_kw": 35,
+      "escalation": 0.02,
+      "description": "Day-ahead and real-time energy price arbitrage in CAISO",
+      "data_source": "CAISO OASIS",
+      "citation": "California ISO. OASIS Market Data, 2024 Annual Summary."
+    },
+    {
+      "name": "T&D Deferral",
+      "annual_value_per_kw": 25,
+      "escalation": 0.015,
+      "description": "Avoided transmission and distribution infrastructure investment",
+      "data_source": "CPUC Avoided Cost Calculator 2024",
+      "citation": "E3. 2024 Avoided Cost Calculator. Prepared for CPUC. October 2024."
+    },
+    {
+      "name": "Ancillary Services",
+      "annual_value_per_kw": 10,
+      "escalation": 0.01,
+      "description": "Frequency regulation, spinning reserves, and flexible ramping product",
+      "data_source": "CAISO AS market",
+      "citation": "California ISO. Ancillary Services Annual Report 2024."
+    }
+  ],
+
+  "notes": "California-specific assumptions reflecting CPUC Standard Practice Manual methodology. RA values reflect premium California capacity market. T&D deferral value applicable to constrained areas. All benefits are societal test perspective."
+}
