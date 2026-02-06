@@ -46,8 +46,23 @@
       "description": "Frequency regulation and spinning reserve revenue",
       "data_source": "CAISO AS market data",
       "citation": "California ISO. Ancillary Services Market Reports 2024."
+    },
+    {
+      "name": "T&D Deferral",
+      "annual_value_per_kw": 25,
+      "escalation": 0.02,
+      "description": "Avoided/deferred transmission and distribution infrastructure upgrades through peak load management",
+      "data_source": "CPUC Avoided Cost Calculator",
+      "citation": "E3. CPUC Avoided Cost Calculator 2024. Energy and Environmental Economics, Inc."
     }
   ],
+
+  "cost_projections": {
+    "learning_rate": 0.12,
+    "base_year": 2024,
+    "description": "Annual cost decline rate for battery storage technology",
+    "citation": "NREL ATB 2024 - Moderate scenario projects 12% annual cost decline through 2030"
+  },
 
   "notes": "Moderate cost scenario from median of 16 industry sources. 4-hour lithium-ion LFP system. See NREL ATB 2024 documentation for full methodology."
 }

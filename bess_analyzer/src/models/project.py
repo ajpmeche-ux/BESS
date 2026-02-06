@@ -118,7 +118,8 @@ class TechnologySpecs:
 class CostInputs:
     """Project cost parameters.
 
-    All costs are in real (constant) dollars.
+    All costs are in real (constant) dollars. Includes learning curve
+    parameters to model cost declines over time.
 
     Attributes:
         capex_per_kwh: Installed capital cost per kWh of energy capacity.
@@ -126,6 +127,8 @@ class CostInputs:
         vom_per_mwh: Variable operations & maintenance cost per MWh discharged.
         augmentation_per_kwh: Battery replacement/augmentation cost per kWh.
         decommissioning_per_kw: End-of-life decommissioning cost per kW.
+        learning_rate: Annual cost decline rate (0.10 = 10% annual decline).
+        cost_base_year: Reference year for base costs (learning applied from this year).
     """
 
     capex_per_kwh: float = 160.0
@@ -133,10 +136,41 @@ class CostInputs:
     vom_per_mwh: float = 0.0
     augmentation_per_kwh: float = 55.0
     decommissioning_per_kw: float = 10.0
+    learning_rate: float = 0.10
+    cost_base_year: int = 2024
 
     def __post_init__(self):
         if self.capex_per_kwh < 0:
             raise ValueError(f"capex_per_kwh must be >= 0, got {self.capex_per_kwh}")
+        if not 0 <= self.learning_rate <= 0.30:
+            raise ValueError(f"learning_rate must be 0-0.30, got {self.learning_rate}")
+
+    def get_augmentation_cost(self, years_from_base: int) -> float:
+        """Calculate augmentation cost adjusted for learning curve.
+
+        Args:
+            years_from_base: Number of years from cost_base_year.
+
+        Returns:
+            Adjusted augmentation cost per kWh accounting for cost decline.
+        """
+        decline_factor = (1 - self.learning_rate) ** max(0, years_from_base)
+        return self.augmentation_per_kwh * decline_factor
+
+    def get_capex_at_year(self, year: int) -> float:
+        """Calculate CapEx at a future year adjusted for learning curve.
+
+        Useful for fleet expansion or replacement cost analysis.
+
+        Args:
+            year: Calendar year (e.g., 2030).
+
+        Returns:
+            Projected CapEx per kWh at the specified year.
+        """
+        years_from_base = year - self.cost_base_year
+        decline_factor = (1 - self.learning_rate) ** max(0, years_from_base)
+        return self.capex_per_kwh * decline_factor
 
     def to_dict(self) -> dict:
         return {
@@ -145,10 +179,16 @@ class CostInputs:
             "vom_per_mwh": self.vom_per_mwh,
             "augmentation_per_kwh": self.augmentation_per_kwh,
             "decommissioning_per_kw": self.decommissioning_per_kw,
+            "learning_rate": self.learning_rate,
+            "cost_base_year": self.cost_base_year,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "CostInputs":
+        # Handle legacy data without learning curve fields
+        data = dict(data)
+        data.setdefault("learning_rate", 0.10)
+        data.setdefault("cost_base_year", 2024)
         return cls(**data)
 
 

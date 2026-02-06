@@ -88,14 +88,17 @@ class AssumptionLibrary:
         n = project.basics.analysis_period_years
         capacity_kw = project.basics.capacity_mw * 1000
 
-        # Apply costs
+        # Apply costs (including learning curve projections)
         cost_data = lib.get("costs", {})
+        cost_projections = lib.get("cost_projections", {})
         project.costs = CostInputs(
             capex_per_kwh=cost_data.get("capex_per_kwh", project.costs.capex_per_kwh),
             fom_per_kw_year=cost_data.get("fom_per_kw_year", project.costs.fom_per_kw_year),
             vom_per_mwh=cost_data.get("vom_per_mwh", project.costs.vom_per_mwh),
             augmentation_per_kwh=cost_data.get("augmentation_per_kwh", project.costs.augmentation_per_kwh),
             decommissioning_per_kw=cost_data.get("decommissioning_per_kw", project.costs.decommissioning_per_kw),
+            learning_rate=cost_projections.get("learning_rate", 0.10),
+            cost_base_year=cost_projections.get("base_year", 2024),
         )
 
         # Apply technology specs

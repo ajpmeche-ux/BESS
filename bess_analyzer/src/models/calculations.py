@@ -207,10 +207,13 @@ def calculate_project_economics(project: Project) -> FinancialResults:
         )
         annual_costs[t] += costs.vom_per_mwh * annual_discharge_mwh
 
-    # Augmentation year: battery replacement cost
+    # Augmentation year: battery replacement cost (adjusted for learning curve)
+    # Cost declines at learning_rate annually from base year
     aug_year = tech.augmentation_year
     if 1 <= aug_year <= n:
-        annual_costs[aug_year] += costs.augmentation_per_kwh * capacity_kwh
+        # Get augmentation cost adjusted for technology cost decline
+        adjusted_aug_cost = costs.get_augmentation_cost(aug_year)
+        annual_costs[aug_year] += adjusted_aug_cost * capacity_kwh
 
     # Final year: decommissioning
     annual_costs[n] += costs.decommissioning_per_kw * capacity_kw

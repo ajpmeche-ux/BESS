@@ -46,8 +46,23 @@
       "description": "Frequency regulation revenue",
       "data_source": "Lazard LCOS v10.0",
       "citation": "Lazard. Lazard's Levelized Cost of Storage Analysis, Version 10.0. March 2025."
+    },
+    {
+      "name": "T&D Deferral",
+      "annual_value_per_kw": 20,
+      "escalation": 0.015,
+      "description": "Avoided transmission and distribution capacity investment through peak shaving",
+      "data_source": "Lazard LCOS v10.0",
+      "citation": "Lazard. Lazard's Levelized Cost of Storage Analysis, Version 10.0. March 2025."
     }
   ],
+
+  "cost_projections": {
+    "learning_rate": 0.10,
+    "base_year": 2025,
+    "description": "Annual cost decline rate reflecting industry experience curve",
+    "citation": "BloombergNEF. Battery Price Survey 2025. Lazard analysis."
+  },
 
   "notes": "Based on Lazard LCOS v10.0 midpoint assumptions for utility-scale 100 MW / 400 MWh LFP system. Costs represent merchant project structure."
 }

@@ -337,3 +337,101 @@ class TestLibraries:
         lib.apply_library_to_project(project, names[0])
         assert len(project.benefits) > 0
         assert project.assumption_library == names[0]
+
+    def test_library_includes_td_deferral(self):
+        """Libraries should include T&D Deferral benefit stream."""
+        lib = AssumptionLibrary()
+        names = lib.get_library_names()
+        project = Project()
+        # NREL should now have T&D Deferral
+        nrel_name = [n for n in names if "NREL" in n][0]
+        lib.apply_library_to_project(project, nrel_name)
+        benefit_names = [b.name for b in project.benefits]
+        assert "T&D Deferral" in benefit_names
+
+    def test_library_includes_learning_rate(self):
+        """Libraries should populate learning rate in costs."""
+        lib = AssumptionLibrary()
+        names = lib.get_library_names()
+        project = Project()
+        nrel_name = [n for n in names if "NREL" in n][0]
+        lib.apply_library_to_project(project, nrel_name)
+        # NREL has 12% learning rate
+        assert project.costs.learning_rate == 0.12
+        assert project.costs.cost_base_year == 2024
+
+
+# ---- Learning Curve Tests ----
+
+class TestLearningCurve:
+    def test_augmentation_cost_year0(self):
+        """At year 0 (base year), no cost decline applied."""
+        costs = CostInputs(augmentation_per_kwh=100, learning_rate=0.10, cost_base_year=2024)
+        result = costs.get_augmentation_cost(0)
+        assert abs(result - 100) < 0.01
+
+    def test_augmentation_cost_year10(self):
+        """At year 10, cost should be ~35% of original with 10% learning rate."""
+        costs = CostInputs(augmentation_per_kwh=100, learning_rate=0.10, cost_base_year=2024)
+        result = costs.get_augmentation_cost(10)
+        expected = 100 * (0.90 ** 10)  # ~34.87
+        assert abs(result - expected) < 0.01
+
+    def test_augmentation_cost_year12(self):
+        """Standard augmentation year (12) with 12% learning rate."""
+        costs = CostInputs(augmentation_per_kwh=55, learning_rate=0.12, cost_base_year=2024)
+        result = costs.get_augmentation_cost(12)
+        expected = 55 * (0.88 ** 12)  # ~11.69
+        assert abs(result - expected) < 0.01
+
+    def test_capex_projection(self):
+        """Future CapEx projection should apply learning curve."""
+        costs = CostInputs(capex_per_kwh=160, learning_rate=0.10, cost_base_year=2024)
+        # CapEx in 2030 (6 years from base)
+        result = costs.get_capex_at_year(2030)
+        expected = 160 * (0.90 ** 6)  # ~84.93
+        assert abs(result - expected) < 0.01
+
+    def test_zero_learning_rate(self):
+        """Zero learning rate should maintain original costs."""
+        costs = CostInputs(augmentation_per_kwh=55, learning_rate=0.0, cost_base_year=2024)
+        result = costs.get_augmentation_cost(20)
+        assert result == 55
+
+    def test_learning_curve_in_project_economics(self):
+        """Project economics should apply learning curve to augmentation."""
+        from datetime import date
+        basics = ProjectBasics(
+            name="Test",
+            capacity_mw=100,
+            duration_hours=4,
+            analysis_period_years=20,
+            discount_rate=0.07,
+        )
+        tech = TechnologySpecs(augmentation_year=12)
+        # High learning rate for clear effect
+        costs = CostInputs(
+            capex_per_kwh=160,
+            augmentation_per_kwh=100,
+            learning_rate=0.15,
+            cost_base_year=2024,
+        )
+        benefits = [
+            BenefitStream(
+                name="RA",
+                annual_values=[15_000_000] * 20,
+            ),
+        ]
+        project = Project(basics=basics, technology=tech, costs=costs, benefits=benefits)
+        results = calculate_project_economics(project)
+
+        # Augmentation should be discounted by learning curve
+        # Year 12 cost = 100 * (0.85^12) * 400,000 kWh = ~5.7M (vs ~40M without learning)
+        expected_aug = 100 * (0.85 ** 12) * 400_000
+        assert results.annual_costs[12] < 20_000_000  # Much less than original
+
+    def test_cost_inputs_validation(self):
+        """Learning rate should be validated (0-30%)."""
+        import pytest
+        with pytest.raises(ValueError):
+            CostInputs(learning_rate=0.50)  # Too high

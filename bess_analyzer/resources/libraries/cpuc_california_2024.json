@@ -57,5 +57,12 @@
     }
   ],
 
+  "cost_projections": {
+    "learning_rate": 0.11,
+    "base_year": 2024,
+    "description": "Annual cost decline rate for battery storage systems",
+    "citation": "E3. California Energy Storage Cost Analysis 2024. Prepared for CPUC."
+  },
+
   "notes": "California-specific assumptions reflecting CPUC Standard Practice Manual methodology. RA values reflect premium California capacity market. T&D deferral value applicable to constrained areas. All benefits are societal test perspective."
 }

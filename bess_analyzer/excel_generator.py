@@ -236,7 +236,7 @@ def create_inputs_sheet(wb, styles):
         ('Resource Adequacy', 150, 0.02, 'CPUC RA Report 2024'),
         ('Energy Arbitrage', 40, 0.015, 'CAISO Market Data 2024'),
         ('Ancillary Services', 15, 0.01, 'CAISO AS Reports 2024'),
-        ('T&D Deferral', 0, 0.015, 'CPUC Avoided Cost Calculator'),
+        ('T&D Deferral', 25, 0.02, 'CPUC Avoided Cost Calculator 2024'),
     ]
 
     for name, value, esc, cite in benefits:
@@ -249,6 +249,68 @@ def create_inputs_sheet(wb, styles):
         ws[f'D{row}'].number_format = '0.0%'
         ws[f'E{row}'] = cite
         row += 1
+
+    row += 1
+
+    # Section: Cost Projections (Learning Curve)
+    ws[f'B{row}'] = "COST PROJECTIONS (Learning Curve)"
+    ws[f'B{row}'].style = styles['section']
+    ws.merge_cells(f'B{row}:E{row}')
+    row += 1
+
+    cost_proj_inputs = [
+        ('Annual Cost Decline Rate', 0.10, 'Percent', 'Technology learning rate (10-15% typical for batteries)'),
+        ('Cost Base Year', 2024, 'Number', 'Reference year for base costs'),
+    ]
+
+    learning_rate_row = row
+    for label, value, dtype, tooltip in cost_proj_inputs:
+        ws[f'B{row}'] = label
+        ws[f'B{row}'].font = Font(bold=True)
+        cell = ws[f'C{row}']
+        cell.value = value
+        cell.style = styles['input']
+        if dtype == 'Percent':
+            cell.number_format = '0.0%'
+        ws[f'E{row}'] = tooltip
+        ws[f'E{row}'].font = Font(italic=True, color='666666')
+        row += 1
+
+    row += 1
+
+    # Future Cost Analysis Section
+    ws[f'B{row}'] = "FUTURE COST PROJECTIONS"
+    ws[f'B{row}'].style = styles['section']
+    ws.merge_cells(f'B{row}:E{row}')
+    row += 1
+
+    # Show projected costs at key years
+    ws[f'B{row}'] = "Year"
+    ws[f'C{row}'] = "Projected CapEx ($/kWh)"
+    ws[f'D{row}'] = "Augmentation Cost ($/kWh)"
+    ws[f'E{row}'] = "% of Today's Cost"
+    for col in ['B', 'C', 'D', 'E']:
+        ws[f'{col}{row}'].style = styles['header']
+    row += 1
+
+    projection_start = row
+    for offset in [0, 5, 10, 12, 15, 20]:
+        ws[f'B{row}'] = f'=C{learning_rate_row+1}+{offset}'
+        # CapEx projection with learning curve
+        ws[f'C{row}'] = f'=C24*(1-$C${learning_rate_row})^{offset}'
+        ws[f'C{row}'].style = styles['formula']
+        ws[f'C{row}'].number_format = '$#,##0.00'
+        # Augmentation cost projection
+        ws[f'D{row}'] = f'=C27*(1-$C${learning_rate_row})^{offset}'
+        ws[f'D{row}'].style = styles['formula']
+        ws[f'D{row}'].number_format = '$#,##0.00'
+        # Percentage
+        ws[f'E{row}'] = f'=(1-$C${learning_rate_row})^{offset}'
+        ws[f'E{row}'].style = styles['formula']
+        ws[f'E{row}'].number_format = '0.0%'
+        row += 1
+
+    row += 1
 
     # Define named ranges for easy reference
     wb.defined_names['Capacity_MW'] = DefinedName('Capacity_MW', attr_text='Inputs!$C$8')
@@ -397,9 +459,11 @@ def create_cashflows_sheet(wb, styles):
         ws.cell(row=row, column=col).number_format = '$#,##0'
         col += 1
 
-        # Augmentation (year 12)
+        # Augmentation (year 12) - adjusted for learning curve cost decline
         if year == 12:
-            ws.cell(row=row, column=col, value='=Calculations!C9')
+            # Augmentation cost = base cost × (1 - learning_rate)^years_from_base
+            # Learning rate is at row 39 in Inputs sheet
+            ws.cell(row=row, column=col, value='=Calculations!C9*(1-Inputs!$C$39)^12')
         else:
             ws.cell(row=row, column=col, value=0)
         ws.cell(row=row, column=col).number_format = '$#,##0'
@@ -695,6 +759,14 @@ def create_methodology_sheet(wb, styles):
         ("Benefit Escalation",
          "Value(t) = Value(1) × (1 + escalation_rate)^(t-1)",
          "Annual price escalation for each benefit stream"),
+
+        ("Technology Learning Curve (Cost Decline)",
+         "Cost(year) = Cost(base) × (1 - learning_rate)^(year - base_year)",
+         "Battery costs decline ~10-15% annually; reduces augmentation & replacement costs"),
+
+        ("T&D Deferral Benefit",
+         "Annual Value = Avoided_Cost_per_kW × Capacity_kW × BESS_Contribution_Factor",
+         "Value of deferring transmission/distribution infrastructure investments"),
     ]
 
     for name, formula, description in formulas:
@@ -762,6 +834,10 @@ def create_methodology_sheet(wb, styles):
         "[7] Brealey, R., Myers, S., & Allen, F. Principles of Corporate Finance (13th ed.). McGraw-Hill, 2020.",
 
         "[8] NREL. Storage Futures Study: Economic Potential of Diurnal Storage. NREL/TP-6A20-77449. 2021.",
+
+        "[9] BloombergNEF. Lithium-Ion Battery Price Survey 2025. Battery technology learning curves.",
+
+        "[10] E3. California Energy Storage Cost Analysis 2024. T&D Deferral methodology and avoided cost calculations.",
     ]
 
     for cite in citations:
@@ -811,6 +887,8 @@ def create_libraries_sheet(wb, styles):
         ('Annual Degradation', '2.5%', '2.0%', '2.5%'),
         ('Cycle Life', 6000, 6500, 6000),
         ('Augmentation Year', 12, 12, 12),
+        ('Learning Rate (Cost Decline)', '12%', '10%', '11%'),
+        ('Cost Base Year', 2024, 2025, 2024),
     ]
 
     for param, nrel, lazard, cpuc in cost_data:
@@ -831,7 +909,7 @@ def create_libraries_sheet(wb, styles):
         ('Resource Adequacy', 150, 140, 180),
         ('Energy Arbitrage', 40, 45, 35),
         ('Ancillary Services', 15, 12, 10),
-        ('T&D Deferral', 0, 0, 25),
+        ('T&D Deferral', 25, 20, 25),
     ]
 
     for param, nrel, lazard, cpuc in benefit_data:
@@ -1078,16 +1156,21 @@ Sub LoadNRELLibrary()
         .Range("C26").Value = 0
         .Range("C27").Value = 55
         .Range("C28").Value = 10
+        ' Benefit streams
         .Range("C32").Value = 150
         .Range("D32").Value = 0.02
         .Range("C33").Value = 40
         .Range("D33").Value = 0.015
         .Range("C34").Value = 15
         .Range("D34").Value = 0.01
-        .Range("C35").Value = 0
-        .Range("D35").Value = 0.015
+        .Range("C35").Value = 25   ' T&D Deferral
+        .Range("D35").Value = 0.02
+        ' Cost projections (learning curve)
+        .Range("C38").Value = 0.12  ' 12% annual cost decline
+        .Range("C39").Value = 2024  ' Base year
     End With
-    MsgBox "NREL ATB 2024 assumptions loaded.", vbInformation
+    MsgBox "NREL ATB 2024 assumptions loaded." & vbCrLf & _
+           "Includes 12% annual cost decline for future augmentation.", vbInformation
 End Sub
 
 Sub LoadLazardLibrary()
@@ -1104,16 +1187,21 @@ Sub LoadLazardLibrary()
         .Range("C26").Value = 0.5
         .Range("C27").Value = 50
         .Range("C28").Value = 8
+        ' Benefit streams
         .Range("C32").Value = 140
         .Range("D32").Value = 0.02
         .Range("C33").Value = 45
         .Range("D33").Value = 0.02
         .Range("C34").Value = 12
         .Range("D34").Value = 0.01
-        .Range("C35").Value = 0
+        .Range("C35").Value = 20   ' T&D Deferral
         .Range("D35").Value = 0.015
+        ' Cost projections (learning curve)
+        .Range("C38").Value = 0.10  ' 10% annual cost decline
+        .Range("C39").Value = 2025  ' Base year
     End With
-    MsgBox "Lazard LCOS 2025 assumptions loaded.", vbInformation
+    MsgBox "Lazard LCOS 2025 assumptions loaded." & vbCrLf & _
+           "Includes 10% annual cost decline for future augmentation.", vbInformation
 End Sub
 
 Sub LoadCPUCLibrary()
@@ -1130,16 +1218,21 @@ Sub LoadCPUCLibrary()
         .Range("C26").Value = 0
         .Range("C27").Value = 52
         .Range("C28").Value = 12
+        ' Benefit streams
         .Range("C32").Value = 180
         .Range("D32").Value = 0.025
         .Range("C33").Value = 35
         .Range("D33").Value = 0.02
         .Range("C34").Value = 10
         .Range("D34").Value = 0.01
-        .Range("C35").Value = 25
+        .Range("C35").Value = 25   ' T&D Deferral
         .Range("D35").Value = 0.015
+        ' Cost projections (learning curve)
+        .Range("C38").Value = 0.11  ' 11% annual cost decline
+        .Range("C39").Value = 2024  ' Base year
     End With
-    MsgBox "CPUC California 2024 assumptions loaded.", vbInformation
+    MsgBox "CPUC California 2024 assumptions loaded." & vbCrLf & _
+           "Includes 11% annual cost decline for future augmentation.", vbInformation
 End Sub
 '''
 
