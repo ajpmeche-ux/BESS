@@ -24,6 +24,7 @@ from src.models.project import (
     BenefitStream,
     CostInputs,
     FinancialResults,
+    FinancingInputs,
     Project,
     ProjectBasics,
     TechnologySpecs,
@@ -666,3 +667,256 @@ class TestLibraryNewBenefits:
         cpuc_name = [n for n in names if "CPUC" in n][0]
         lib.apply_library_to_project(project, cpuc_name)
         assert project.costs.itc_adders == 0.10  # 10% energy community adder
+
+
+# ---- Cycles Per Day Tests ----
+
+class TestCyclesPerDay:
+    def test_cycles_per_day_default(self):
+        """Default cycles_per_day should be 1.0."""
+        tech = TechnologySpecs()
+        assert tech.cycles_per_day == 1.0
+
+    def test_cycles_per_day_validation(self):
+        """cycles_per_day should be validated (0.1-3.0)."""
+        with pytest.raises(ValueError):
+            TechnologySpecs(cycles_per_day=0.05)  # Too low
+        with pytest.raises(ValueError):
+            TechnologySpecs(cycles_per_day=4.0)  # Too high
+
+    def test_more_cycles_increases_energy(self):
+        """More cycles per day should increase annual energy discharge and charging costs."""
+        basics = ProjectBasics(capacity_mw=100, duration_hours=4)
+        # Use charging cost to make the difference visible
+        costs = CostInputs(itc_percent=0.0, charging_cost_per_mwh=30, vom_per_mwh=1.0)
+        benefits = [BenefitStream(name="RA", annual_values=[15_000_000] * 20)]
+
+        tech_1cycle = TechnologySpecs(cycles_per_day=1.0)
+        tech_2cycles = TechnologySpecs(cycles_per_day=2.0)
+
+        project_1 = Project(basics=basics, technology=tech_1cycle, costs=costs, benefits=benefits)
+        project_2 = Project(basics=basics, technology=tech_2cycles, costs=costs, benefits=benefits)
+
+        results_1 = calculate_project_economics(project_1)
+        results_2 = calculate_project_economics(project_2)
+
+        # Annual costs should be higher with more cycles (more energy discharged = more charging + VOM)
+        assert results_2.annual_costs[1] > results_1.annual_costs[1]
+
+    def test_library_loads_cycles_per_day(self):
+        """Libraries should load cycles_per_day."""
+        lib = AssumptionLibrary()
+        names = lib.get_library_names()
+        project = Project()
+        nrel_name = [n for n in names if "NREL" in n][0]
+        lib.apply_library_to_project(project, nrel_name)
+        assert project.technology.cycles_per_day == 1.0
+
+
+# ---- Charging Cost Tests ----
+
+class TestChargingCost:
+    def test_charging_cost_default(self):
+        """Default charging_cost_per_mwh should be 30.0."""
+        costs = CostInputs()
+        assert costs.charging_cost_per_mwh == 30.0
+
+    def test_charging_cost_validation(self):
+        """charging_cost_per_mwh should not be negative."""
+        with pytest.raises(ValueError):
+            CostInputs(charging_cost_per_mwh=-10)
+
+    def test_charging_cost_increases_annual_costs(self):
+        """Charging cost should increase annual operating costs."""
+        basics = ProjectBasics(capacity_mw=100, duration_hours=4)
+        tech = TechnologySpecs()
+        benefits = [BenefitStream(name="RA", annual_values=[15_000_000] * 20)]
+
+        costs_no_charging = CostInputs(
+            itc_percent=0.0,
+            fom_per_kw_year=0,
+            vom_per_mwh=0,
+            insurance_pct_of_capex=0,
+            property_tax_pct=0,
+            charging_cost_per_mwh=0,
+        )
+        costs_with_charging = CostInputs(
+            itc_percent=0.0,
+            fom_per_kw_year=0,
+            vom_per_mwh=0,
+            insurance_pct_of_capex=0,
+            property_tax_pct=0,
+            charging_cost_per_mwh=50,  # $50/MWh
+        )
+
+        project_no_charge = Project(basics=basics, technology=tech, costs=costs_no_charging, benefits=benefits)
+        project_with_charge = Project(basics=basics, technology=tech, costs=costs_with_charging, benefits=benefits)
+
+        results_no = calculate_project_economics(project_no_charge)
+        results_with = calculate_project_economics(project_with_charge)
+
+        # Year 1 costs should be higher with charging cost
+        assert results_with.annual_costs[1] > results_no.annual_costs[1]
+
+    def test_library_loads_charging_cost(self):
+        """Libraries should load charging_cost_per_mwh."""
+        lib = AssumptionLibrary()
+        names = lib.get_library_names()
+        project = Project()
+        nrel_name = [n for n in names if "NREL" in n][0]
+        lib.apply_library_to_project(project, nrel_name)
+        assert project.costs.charging_cost_per_mwh == 30.0
+
+
+# ---- Residual Value Tests ----
+
+class TestResidualValue:
+    def test_residual_value_default(self):
+        """Default residual_value_pct should be 0.10 (10%)."""
+        costs = CostInputs()
+        assert costs.residual_value_pct == 0.10
+
+    def test_residual_value_validation(self):
+        """residual_value_pct should be 0-50%."""
+        with pytest.raises(ValueError):
+            CostInputs(residual_value_pct=-0.1)
+        with pytest.raises(ValueError):
+            CostInputs(residual_value_pct=0.60)
+
+    def test_residual_value_reduces_final_year_costs(self):
+        """Residual value should reduce final year net costs."""
+        basics = ProjectBasics(capacity_mw=100, duration_hours=4, analysis_period_years=20)
+        tech = TechnologySpecs()
+        benefits = [BenefitStream(name="RA", annual_values=[15_000_000] * 20)]
+
+        costs_no_residual = CostInputs(
+            itc_percent=0.0,
+            residual_value_pct=0.0,
+            decommissioning_per_kw=10,
+        )
+        costs_with_residual = CostInputs(
+            itc_percent=0.0,
+            residual_value_pct=0.20,  # 20% residual
+            decommissioning_per_kw=10,
+        )
+
+        project_no = Project(basics=basics, technology=tech, costs=costs_no_residual, benefits=benefits)
+        project_with = Project(basics=basics, technology=tech, costs=costs_with_residual, benefits=benefits)
+
+        results_no = calculate_project_economics(project_no)
+        results_with = calculate_project_economics(project_with)
+
+        # Year 20 costs should be lower with residual value
+        assert results_with.annual_costs[20] < results_no.annual_costs[20]
+
+
+# ---- Financing Structure Tests ----
+
+class TestFinancingInputs:
+    def test_financing_defaults(self):
+        """FinancingInputs should have sensible defaults."""
+        fin = FinancingInputs()
+        assert fin.debt_percent == 0.60
+        assert fin.interest_rate == 0.05
+        assert fin.loan_term_years == 15
+        assert fin.cost_of_equity == 0.10
+        assert fin.tax_rate == 0.21
+
+    def test_wacc_calculation(self):
+        """WACC should be calculated correctly."""
+        # WACC = (1-D)*Re + D*Rd*(1-Tc)
+        # With 60% debt at 5%, 40% equity at 10%, 21% tax:
+        # WACC = 0.4*0.10 + 0.6*0.05*(1-0.21) = 0.04 + 0.0237 = 0.0637
+        fin = FinancingInputs(
+            debt_percent=0.60,
+            interest_rate=0.05,
+            cost_of_equity=0.10,
+            tax_rate=0.21,
+        )
+        wacc = fin.calculate_wacc()
+        expected = 0.4 * 0.10 + 0.6 * 0.05 * (1 - 0.21)
+        assert abs(wacc - expected) < 0.0001
+        assert abs(wacc - 0.0637) < 0.001
+
+    def test_wacc_all_equity(self):
+        """WACC with 100% equity should equal cost of equity."""
+        fin = FinancingInputs(debt_percent=0.0, cost_of_equity=0.12)
+        assert abs(fin.calculate_wacc() - 0.12) < 0.0001
+
+    def test_wacc_all_debt(self):
+        """WACC with 100% debt should equal after-tax debt cost."""
+        fin = FinancingInputs(debt_percent=1.0, interest_rate=0.06, tax_rate=0.21)
+        expected = 0.06 * (1 - 0.21)
+        assert abs(fin.calculate_wacc() - expected) < 0.0001
+
+    def test_financing_validation(self):
+        """Financing inputs should be validated."""
+        with pytest.raises(ValueError):
+            FinancingInputs(debt_percent=1.5)  # Too high
+        with pytest.raises(ValueError):
+            FinancingInputs(interest_rate=0.25)  # Too high
+        with pytest.raises(ValueError):
+            FinancingInputs(loan_term_years=0)  # Too low
+        with pytest.raises(ValueError):
+            FinancingInputs(cost_of_equity=0.35)  # Too high
+
+    def test_project_get_discount_rate_with_financing(self):
+        """Project.get_discount_rate should return WACC when financing is provided."""
+        basics = ProjectBasics(discount_rate=0.07)
+        financing = FinancingInputs(
+            debt_percent=0.60,
+            interest_rate=0.05,
+            cost_of_equity=0.10,
+            tax_rate=0.21,
+        )
+        project = Project(basics=basics, financing=financing)
+        wacc = project.get_discount_rate()
+        expected_wacc = financing.calculate_wacc()
+        assert wacc == expected_wacc
+        assert wacc != 0.07  # Should not use basics.discount_rate
+
+    def test_project_get_discount_rate_without_financing(self):
+        """Project.get_discount_rate should return discount_rate when no financing."""
+        basics = ProjectBasics(discount_rate=0.08)
+        project = Project(basics=basics, financing=None)
+        assert project.get_discount_rate() == 0.08
+
+    def test_library_loads_financing(self):
+        """Libraries should load financing structure."""
+        lib = AssumptionLibrary()
+        names = lib.get_library_names()
+        project = Project()
+        nrel_name = [n for n in names if "NREL" in n][0]
+        lib.apply_library_to_project(project, nrel_name)
+        assert project.financing is not None
+        assert project.financing.debt_percent == 0.60
+
+    def test_financing_affects_npv(self):
+        """Financing structure should affect NPV via WACC."""
+        basics = ProjectBasics(capacity_mw=100, duration_hours=4, discount_rate=0.10)
+        tech = TechnologySpecs()
+        costs = CostInputs(itc_percent=0.30)
+        benefits = [BenefitStream(name="RA", annual_values=[15_000_000] * 20)]
+
+        # Higher equity cost = higher WACC = lower NPV
+        financing_low_wacc = FinancingInputs(
+            debt_percent=0.70,
+            interest_rate=0.04,
+            cost_of_equity=0.08,
+            tax_rate=0.21,
+        )
+        financing_high_wacc = FinancingInputs(
+            debt_percent=0.30,
+            interest_rate=0.06,
+            cost_of_equity=0.15,
+            tax_rate=0.21,
+        )
+
+        project_low = Project(basics=basics, technology=tech, costs=costs, benefits=benefits, financing=financing_low_wacc)
+        project_high = Project(basics=basics, technology=tech, costs=costs, benefits=benefits, financing=financing_high_wacc)
+
+        results_low = calculate_project_economics(project_low)
+        results_high = calculate_project_economics(project_high)
+
+        # Lower WACC should give higher NPV
+        assert results_low.npv > results_high.npv

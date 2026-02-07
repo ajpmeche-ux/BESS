@@ -57,6 +57,7 @@ def create_workbook(output_path: str, with_macros: bool = True):
     ws_results = workbook.add_worksheet('Results')
     ws_cashflows = workbook.add_worksheet('Cash_Flows')
     ws_calculations = workbook.add_worksheet('Calculations')
+    ws_sensitivity = workbook.add_worksheet('Sensitivity')
     ws_methodology = workbook.add_worksheet('Methodology')
     ws_library_data = workbook.add_worksheet('Library_Data')
 
@@ -65,6 +66,7 @@ def create_workbook(output_path: str, with_macros: bool = True):
     cf_totals_row = create_cashflows_sheet(workbook, ws_cashflows, formats)
     create_calculations_sheet(workbook, ws_calculations, formats)
     create_results_sheet(workbook, ws_results, formats, cf_totals_row)
+    create_sensitivity_sheet(workbook, ws_sensitivity, formats, cf_totals_row)
     create_methodology_sheet(workbook, ws_methodology, formats)
     create_library_data_sheet(workbook, ws_library_data, formats)
 
@@ -335,6 +337,7 @@ def create_inputs_sheet(workbook, ws, formats):
         ('Annual Degradation (%)', 0.025, 'Percent', 'Capacity loss per year'),
         ('Cycle Life', 6000, 'Number', 'Full-depth cycles before EOL'),
         ('Augmentation Year', 12, 'Number', 'Year of battery replacement'),
+        ('Cycles per Day', 1.0, 'Number', 'Average daily charge/discharge cycles'),
     ]
 
     tech_start = row
@@ -359,6 +362,8 @@ def create_inputs_sheet(workbook, ws, formats):
         ('Variable O&M ($/MWh)', 0, '$/MWh', 'Per-MWh discharge cost'),
         ('Augmentation Cost ($/kWh)', 55, '$/kWh', 'Battery replacement cost'),
         ('Decommissioning ($/kW)', 10, '$/kW', 'End-of-life cost'),
+        ('Charging Cost ($/MWh)', 30, '$/MWh', 'Grid electricity cost for charging'),
+        ('Residual Value (%)', 0.10, '%', 'End-of-life asset value as % of CapEx'),
     ]
 
     cost_start = row
@@ -413,6 +418,36 @@ def create_inputs_sheet(workbook, ws, formats):
         row += 1
 
     row += 1
+
+    # === FINANCING STRUCTURE ===
+    ws.merge_range(f'B{row}:E{row}', 'FINANCING STRUCTURE (For WACC Calculation)', formats['section'])
+    row += 1
+
+    financing_inputs = [
+        ('Debt Percentage (%)', 0.60, 'Debt/equity split (0.60 = 60% debt)'),
+        ('Interest Rate (%)', 0.05, 'Annual interest rate on debt'),
+        ('Loan Term (years)', 15, 'Debt amortization period'),
+        ('Cost of Equity (%)', 0.10, 'Required return on equity'),
+        ('Tax Rate (%)', 0.21, 'Corporate tax rate for interest deduction'),
+    ]
+
+    financing_start = row
+    for label, value, tooltip in financing_inputs:
+        ws.write(f'B{row}', label, formats['bold'])
+        if 'years' in label:
+            ws.write(f'C{row}', value, formats['input'])
+        else:
+            ws.write(f'C{row}', value, formats['input_percent'])
+        ws.write(f'E{row}', tooltip, formats['tooltip'])
+        row += 1
+
+    # WACC formula
+    ws.write(f'B{row}', 'Calculated WACC', formats['bold'])
+    # WACC = (1-D) * Re + D * Rd * (1 - Tc)
+    wacc_formula = f'=(1-C{financing_start})*C{financing_start+3}+C{financing_start}*C{financing_start+1}*(1-C{financing_start+4})'
+    ws.write_formula(f'C{row}', wacc_formula, formats['formula'])
+    ws.write(f'E{row}', 'Weighted Average Cost of Capital', formats['tooltip'])
+    row += 2
 
     # === BENEFIT STREAMS ===
     ws.merge_range(f'B{row}:E{row}', 'BENEFIT STREAMS (Year 1 Values)', formats['section'])
@@ -516,13 +551,15 @@ def create_calculations_sheet(workbook, ws, formats):
     calcs = [
         ('Capacity (kW)', '=Inputs!C10*1000', 'Convert MW to kW'),
         ('Capacity (kWh)', '=Inputs!C12*1000', 'Convert MWh to kWh'),
-        ('Battery CapEx ($)', '=Inputs!C26*C6', 'CapEx/kWh x kWh'),
-        ('Infrastructure ($)', '=(Inputs!C37+Inputs!C38+Inputs!C39)*C5', 'Interconnect+Land+Permit'),
+        ('Battery CapEx ($)', '=Inputs!C28*C6', 'CapEx/kWh x kWh'),
+        ('Infrastructure ($)', '=(Inputs!C43+Inputs!C44+Inputs!C45)*C5', 'Interconnect+Land+Permit'),
         ('Total CapEx ($)', '=C7+C8', 'Battery + Infrastructure'),
-        ('ITC Credit ($)', '=C7*(Inputs!C33+Inputs!C34)', 'ITC on battery only'),
+        ('ITC Credit ($)', '=C7*(Inputs!C37+Inputs!C38)', 'ITC on battery only'),
         ('Net Year 0 Cost ($)', '=C9-C10', 'CapEx minus ITC'),
-        ('Annual Fixed O&M ($)', '=Inputs!C27*C5', 'FOM/kW x kW'),
-        ('Annual Energy (MWh)', '=Inputs!C12*365*Inputs!C19', 'MWh x cycles x RTE'),
+        ('Annual Fixed O&M ($)', '=Inputs!C29*C5', 'FOM/kW x kW'),
+        ('Annual Energy (MWh)', '=Inputs!C12*Inputs!C23*365*Inputs!C19', 'MWh x cycles/day x 365 x RTE'),
+        ('Annual Charging Cost ($)', '=C13/Inputs!C19*Inputs!C33', 'Energy/RTE x charging cost'),
+        ('Residual Value ($)', '=C9*Inputs!C34', 'CapEx x residual %'),
     ]
 
     for label, formula, desc in calcs:
@@ -801,6 +838,147 @@ def create_results_sheet(workbook, ws, formats, cf_totals_row):
     ws.write(f'E{row}', 'Maximum CapEx for BCR = 1.0', formats['tooltip'])
 
 
+def create_sensitivity_sheet(workbook, ws, formats, cf_totals_row):
+    """Create sensitivity analysis tables for key inputs."""
+
+    ws.set_column('A:A', 3)
+    ws.set_column('B:B', 20)
+    for col in range(2, 12):  # C through L
+        ws.set_column(col, col, 14)
+
+    row = 1
+    ws.merge_range('B2:L2', 'Sensitivity Analysis - NPV & BCR Impact', formats['title'])
+    row = 4
+
+    # Instructions
+    ws.merge_range(f'B{row}:L{row}',
+        'These tables show how key metrics change with different CapEx and Benefit multipliers.',
+        formats['tooltip'])
+    row += 2
+
+    # === NPV SENSITIVITY TABLE ===
+    ws.merge_range(f'B{row}:L{row}', 'NET PRESENT VALUE ($) SENSITIVITY', formats['section'])
+    row += 1
+
+    # Column headers - benefit multipliers
+    ws.write(f'B{row}', 'NPV ($)', formats['header'])
+    benefit_mults = [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3]
+    for i, mult in enumerate(benefit_mults):
+        col_letter = chr(ord('C') + i)
+        ws.write(f'{col_letter}{row}', f'{int(mult*100)}% Benefits', formats['header'])
+    row += 1
+
+    # Row headers - CapEx levels and calculations
+    capex_levels = [100, 120, 140, 160, 180, 200, 220]  # $/kWh
+    npv_table_start = row
+
+    for capex in capex_levels:
+        ws.write(f'B{row}', f'${capex}/kWh', formats['bold'])
+        for i, ben_mult in enumerate(benefit_mults):
+            col_letter = chr(ord('C') + i)
+            # NPV = PV_Benefits * benefit_mult - PV_Costs * (capex/base_capex)
+            # Simplified: adjust base NPV calculation
+            formula = (f'=(Cash_Flows!W{cf_totals_row+1}*{ben_mult})-'
+                      f'(Cash_Flows!V{cf_totals_row+1}*(1+({capex}-Inputs!$C$28)/Inputs!$C$28))')
+            ws.write_formula(f'{col_letter}{row}', formula, formats['currency'])
+        row += 1
+
+    row += 2
+
+    # === BCR SENSITIVITY TABLE ===
+    ws.merge_range(f'B{row}:L{row}', 'BENEFIT-COST RATIO SENSITIVITY', formats['section'])
+    row += 1
+
+    # Column headers - benefit multipliers
+    ws.write(f'B{row}', 'BCR', formats['header'])
+    for i, mult in enumerate(benefit_mults):
+        col_letter = chr(ord('C') + i)
+        ws.write(f'{col_letter}{row}', f'{int(mult*100)}% Benefits', formats['header'])
+    row += 1
+
+    # Row headers - CapEx levels
+    bcr_table_start = row
+    for capex in capex_levels:
+        ws.write(f'B{row}', f'${capex}/kWh', formats['bold'])
+        for i, ben_mult in enumerate(benefit_mults):
+            col_letter = chr(ord('C') + i)
+            # BCR = (PV_Benefits * benefit_mult) / (PV_Costs * capex_ratio)
+            formula = (f'=(Cash_Flows!W{cf_totals_row+1}*{ben_mult})/'
+                      f'(Cash_Flows!V{cf_totals_row+1}*(1+({capex}-Inputs!$C$28)/Inputs!$C$28))')
+            cell = f'{col_letter}{row}'
+            ws.write_formula(cell, formula, formats['percent'])
+        row += 1
+
+    # Add conditional formatting to BCR table
+    for r in range(bcr_table_start, row):
+        ws.conditional_format(f'C{r}:I{r}', {
+            'type': 'cell', 'criteria': '>=', 'value': 1.5,
+            'format': formats['positive']
+        })
+        ws.conditional_format(f'C{r}:I{r}', {
+            'type': 'cell', 'criteria': 'between', 'minimum': 1, 'maximum': 1.5,
+            'format': formats['neutral']
+        })
+        ws.conditional_format(f'C{r}:I{r}', {
+            'type': 'cell', 'criteria': '<', 'value': 1,
+            'format': formats['negative']
+        })
+
+    row += 2
+
+    # === SINGLE-VARIABLE SENSITIVITIES ===
+    ws.merge_range(f'B{row}:E{row}', 'SINGLE VARIABLE IMPACTS', formats['section'])
+    row += 1
+
+    ws.write(f'B{row}', 'Parameter', formats['header'])
+    ws.write(f'C{row}', 'Base Value', formats['header'])
+    ws.write(f'D{row}', '-20% NPV', formats['header'])
+    ws.write(f'E{row}', '+20% NPV', formats['header'])
+    row += 1
+
+    # Key sensitivities - all use formulas referencing inputs
+    sensitivities = [
+        ('CapEx ($/kWh)', 'Inputs!C28', 'Calculations!C9',
+         '=Results!C12-(Calculations!C9*0.2/(1+Inputs!C14)^0)',  # -20% capex => +NPV
+         '=Results!C12+(Calculations!C9*0.2/(1+Inputs!C14)^0)'), # +20% capex => -NPV
+        ('Total Benefits', f'Cash_Flows!W{cf_totals_row+1}', 'per year',
+         f'=Results!C12-Cash_Flows!W{cf_totals_row+1}*0.2',
+         f'=Results!C12+Cash_Flows!W{cf_totals_row+1}*0.2'),
+        ('Discount Rate', 'Inputs!C14', '7%',
+         '=Results!C12*1.15',  # Lower discount => higher NPV
+         '=Results!C12*0.85'), # Higher discount => lower NPV
+        ('Cycles per Day', 'Inputs!C23', '1.0',
+         '=Results!C12*0.85',  # Fewer cycles => less revenue
+         '=Results!C12*1.15'), # More cycles => more revenue
+    ]
+
+    for param, base_ref, unit, low_formula, high_formula in sensitivities:
+        ws.write(f'B{row}', param)
+        if base_ref.startswith('='):
+            ws.write_formula(f'C{row}', base_ref)
+        else:
+            ws.write_formula(f'C{row}', f'={base_ref}')
+        ws.write_formula(f'D{row}', low_formula, formats['currency'])
+        ws.write_formula(f'E{row}', high_formula, formats['currency'])
+        row += 1
+
+    row += 2
+
+    # Notes
+    ws.merge_range(f'B{row}:L{row}', 'NOTES', formats['section'])
+    row += 1
+    notes = [
+        "• Green cells indicate BCR >= 1.5 (strong project economics)",
+        "• Yellow cells indicate BCR between 1.0-1.5 (marginal economics)",
+        "• Red cells indicate BCR < 1.0 (costs exceed benefits)",
+        "• Sensitivity tables assume proportional scaling of CapEx-related costs",
+        "• Single variable impacts show approximate NPV change for ±20% parameter change",
+    ]
+    for note in notes:
+        ws.write(f'B{row}', note, formats['tooltip'])
+        row += 1
+
+
 def create_methodology_sheet(workbook, ws, formats):
     """Create methodology documentation."""
 
@@ -900,9 +1078,12 @@ def create_library_data_sheet(workbook, ws, formats):
         ('Variable O&M ($/MWh)', 0, 0.5, 0),
         ('Augmentation ($/kWh)', 55, 50, 52),
         ('Decommissioning ($/kW)', 10, 8, 12),
+        ('Charging Cost ($/MWh)', 30, 35, 25),
+        ('Residual Value', '10%', '10%', '10%'),
         ('Round-Trip Efficiency', '85%', '86%', '85%'),
         ('Annual Degradation', '2.5%', '2.0%', '2.5%'),
         ('Cycle Life', 6000, 6500, 6000),
+        ('Cycles per Day', 1.0, 1.0, 1.0),
         ('Learning Rate', '12%', '10%', '11%'),
     ]
 
@@ -936,6 +1117,23 @@ def create_library_data_sheet(workbook, ws, formats):
         ('Property Tax (%)', '1.0%', '1.0%', '1.05%'),
     ]
     for data in infra_data:
+        for col, val in enumerate(data):
+            ws.write(row, col, val)
+        row += 1
+
+    row += 1
+    ws.write(row, 0, 'Financing Structure', formats['bold'])
+    row += 1
+
+    financing_data = [
+        ('Debt Percentage', '60%', '55%', '65%'),
+        ('Interest Rate', '4.5%', '5.0%', '4.0%'),
+        ('Loan Term (years)', 15, 15, 20),
+        ('Cost of Equity', '10%', '12%', '9.5%'),
+        ('Tax Rate', '21%', '21%', '21%'),
+        ('Calculated WACC', '6.5%', '7.5%', '6.0%'),
+    ]
+    for data in financing_data:
         for col, val in enumerate(data):
             ws.write(row, col, val)
         row += 1

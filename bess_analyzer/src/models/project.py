@@ -86,6 +86,7 @@ class TechnologySpecs:
         cycle_life: Number of full-depth cycles before end-of-life.
         warranty_years: Manufacturer warranty period.
         augmentation_year: Year in which battery augmentation occurs.
+        cycles_per_day: Average number of full charge-discharge cycles per day.
     """
 
     chemistry: str = "LFP"
@@ -94,6 +95,7 @@ class TechnologySpecs:
     cycle_life: int = 6000
     warranty_years: int = 10
     augmentation_year: int = 12
+    cycles_per_day: float = 1.0
 
     def __post_init__(self):
         if not 0.5 <= self.round_trip_efficiency <= 1.0:
@@ -104,6 +106,10 @@ class TechnologySpecs:
             raise ValueError(
                 f"degradation_rate_annual must be 0-0.10, got {self.degradation_rate_annual}"
             )
+        if not 0.1 <= self.cycles_per_day <= 3.0:
+            raise ValueError(
+                f"cycles_per_day must be 0.1-3.0, got {self.cycles_per_day}"
+            )
 
     def to_dict(self) -> dict:
         return {
@@ -113,10 +119,13 @@ class TechnologySpecs:
             "cycle_life": self.cycle_life,
             "warranty_years": self.warranty_years,
             "augmentation_year": self.augmentation_year,
+            "cycles_per_day": self.cycles_per_day,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "TechnologySpecs":
+        data = dict(data)
+        data.setdefault("cycles_per_day", 1.0)
         return cls(**data)
 
 
@@ -149,6 +158,10 @@ class CostInputs:
         # Annual costs (Common to all utility projects)
         insurance_pct_of_capex: Annual insurance as % of CapEx (0.01 = 1%).
         property_tax_pct: Annual property tax as % of asset value (0.01 = 1%).
+        charging_cost_per_mwh: Cost of electricity for charging ($/MWh).
+
+        # End of life
+        residual_value_pct: Residual value at end of analysis as % of CapEx (0.10 = 10%).
     """
 
     capex_per_kwh: float = 160.0
@@ -171,6 +184,10 @@ class CostInputs:
     # Annual costs (Common to all utility infrastructure projects)
     insurance_pct_of_capex: float = 0.005  # 0.5% of CapEx annually
     property_tax_pct: float = 0.01  # 1% of asset value annually
+    charging_cost_per_mwh: float = 30.0  # $/MWh for grid charging
+
+    # End of life value
+    residual_value_pct: float = 0.10  # 10% residual value at end of analysis
 
     def __post_init__(self):
         if self.capex_per_kwh < 0:
@@ -181,6 +198,10 @@ class CostInputs:
             raise ValueError(f"itc_percent must be 0-0.50, got {self.itc_percent}")
         if not 0 <= self.itc_adders <= 0.20:
             raise ValueError(f"itc_adders must be 0-0.20, got {self.itc_adders}")
+        if self.charging_cost_per_mwh < 0:
+            raise ValueError(f"charging_cost_per_mwh must be >= 0, got {self.charging_cost_per_mwh}")
+        if not 0 <= self.residual_value_pct <= 0.50:
+            raise ValueError(f"residual_value_pct must be 0-0.50, got {self.residual_value_pct}")
 
     def get_augmentation_cost(self, years_from_base: int) -> float:
         """Calculate augmentation cost adjusted for learning curve.
@@ -225,6 +246,8 @@ class CostInputs:
             "permitting_per_kw": self.permitting_per_kw,
             "insurance_pct_of_capex": self.insurance_pct_of_capex,
             "property_tax_pct": self.property_tax_pct,
+            "charging_cost_per_mwh": self.charging_cost_per_mwh,
+            "residual_value_pct": self.residual_value_pct,
         }
 
     @classmethod
@@ -240,6 +263,82 @@ class CostInputs:
         data.setdefault("permitting_per_kw", 15.0)
         data.setdefault("insurance_pct_of_capex", 0.005)
         data.setdefault("property_tax_pct", 0.01)
+        data.setdefault("charging_cost_per_mwh", 30.0)
+        data.setdefault("residual_value_pct", 0.10)
+        return cls(**data)
+
+
+@dataclass
+class FinancingInputs:
+    """Project financing structure parameters.
+
+    Enables WACC calculation based on debt/equity mix for more accurate
+    discount rate derivation. Optional - if not provided, uses project
+    discount_rate directly.
+
+    Attributes:
+        debt_percent: Percentage of project financed with debt (0.60 = 60%).
+        interest_rate: Annual interest rate on debt (0.05 = 5%).
+        loan_term_years: Loan amortization period in years.
+        cost_of_equity: Required return on equity (0.10 = 10%).
+        tax_rate: Corporate tax rate for interest deduction (0.21 = 21%).
+    """
+
+    debt_percent: float = 0.60  # 60% debt / 40% equity typical for utility
+    interest_rate: float = 0.05  # 5% interest rate
+    loan_term_years: int = 15  # 15-year loan term
+    cost_of_equity: float = 0.10  # 10% required return on equity
+    tax_rate: float = 0.21  # 21% federal corporate tax rate
+
+    def __post_init__(self):
+        if not 0 <= self.debt_percent <= 1.0:
+            raise ValueError(f"debt_percent must be 0-1.0, got {self.debt_percent}")
+        if not 0 <= self.interest_rate <= 0.20:
+            raise ValueError(f"interest_rate must be 0-0.20, got {self.interest_rate}")
+        if not 1 <= self.loan_term_years <= 30:
+            raise ValueError(f"loan_term_years must be 1-30, got {self.loan_term_years}")
+        if not 0 <= self.cost_of_equity <= 0.30:
+            raise ValueError(f"cost_of_equity must be 0-0.30, got {self.cost_of_equity}")
+        if not 0 <= self.tax_rate <= 0.50:
+            raise ValueError(f"tax_rate must be 0-0.50, got {self.tax_rate}")
+
+    def calculate_wacc(self) -> float:
+        """Calculate weighted average cost of capital.
+
+        Formula:
+            WACC = (E/V) * Re + (D/V) * Rd * (1 - Tc)
+
+        Where:
+            E/V = equity weight
+            Re = cost of equity
+            D/V = debt weight
+            Rd = cost of debt (interest rate)
+            Tc = corporate tax rate
+
+        Returns:
+            WACC as a decimal (e.g., 0.07 for 7%).
+        """
+        equity_weight = 1 - self.debt_percent
+        after_tax_debt_cost = self.interest_rate * (1 - self.tax_rate)
+        return (equity_weight * self.cost_of_equity) + (self.debt_percent * after_tax_debt_cost)
+
+    def to_dict(self) -> dict:
+        return {
+            "debt_percent": self.debt_percent,
+            "interest_rate": self.interest_rate,
+            "loan_term_years": self.loan_term_years,
+            "cost_of_equity": self.cost_of_equity,
+            "tax_rate": self.tax_rate,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "FinancingInputs":
+        data = dict(data)
+        data.setdefault("debt_percent", 0.60)
+        data.setdefault("interest_rate", 0.05)
+        data.setdefault("loan_term_years", 15)
+        data.setdefault("cost_of_equity", 0.10)
+        data.setdefault("tax_rate", 0.21)
         return cls(**data)
 
 
@@ -336,6 +435,7 @@ class Project:
         basics: Project identification and sizing.
         technology: Battery technology specifications.
         costs: Cost input parameters.
+        financing: Project financing structure (optional).
         benefits: List of benefit/revenue streams.
         results: Calculated financial results (populated after analysis).
         assumption_library: Name of loaded assumption library, if any.
@@ -345,16 +445,24 @@ class Project:
     basics: ProjectBasics = field(default_factory=ProjectBasics)
     technology: TechnologySpecs = field(default_factory=TechnologySpecs)
     costs: CostInputs = field(default_factory=CostInputs)
+    financing: Optional[FinancingInputs] = None
     benefits: List[BenefitStream] = field(default_factory=list)
     results: Optional[FinancialResults] = None
     assumption_library: str = ""
     library_version: str = ""
+
+    def get_discount_rate(self) -> float:
+        """Return effective discount rate (WACC if financing provided, else basics.discount_rate)."""
+        if self.financing:
+            return self.financing.calculate_wacc()
+        return self.basics.discount_rate
 
     def to_dict(self) -> dict:
         return {
             "basics": self.basics.to_dict(),
             "technology": self.technology.to_dict(),
             "costs": self.costs.to_dict(),
+            "financing": self.financing.to_dict() if self.financing else None,
             "benefits": [b.to_dict() for b in self.benefits],
             "results": self.results.to_dict() if self.results else None,
             "assumption_library": self.assumption_library,
@@ -363,10 +471,12 @@ class Project:
 
     @classmethod
     def from_dict(cls, data: dict) -> "Project":
+        financing_data = data.get("financing")
         return cls(
             basics=ProjectBasics.from_dict(data["basics"]),
             technology=TechnologySpecs.from_dict(data["technology"]),
             costs=CostInputs.from_dict(data["costs"]),
+            financing=FinancingInputs.from_dict(financing_data) if financing_data else None,
             benefits=[BenefitStream.from_dict(b) for b in data.get("benefits", [])],
             results=FinancialResults.from_dict(data["results"]) if data.get("results") else None,
             assumption_library=data.get("assumption_library", ""),

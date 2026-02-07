@@ -17,7 +17,9 @@
     "land_per_kw": 15,
     "permitting_per_kw": 20,
     "insurance_pct_of_capex": 0.005,
-    "property_tax_pct": 0.0105
+    "property_tax_pct": 0.0105,
+    "charging_cost_per_mwh": 25,
+    "residual_value_pct": 0.10
   },
 
   "technology": {
@@ -26,7 +28,17 @@
     "degradation_rate_annual": 0.025,
     "cycle_life": 6000,
     "warranty_years": 10,
-    "augmentation_year": 12
+    "augmentation_year": 12,
+    "cycles_per_day": 1.0
+  },
+
+  "financing": {
+    "debt_percent": 0.65,
+    "interest_rate": 0.04,
+    "loan_term_years": 20,
+    "cost_of_equity": 0.095,
+    "tax_rate": 0.21,
+    "description": "California IOU-style financing with favorable debt terms"
   },
 
   "benefits": [

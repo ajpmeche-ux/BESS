@@ -17,7 +17,9 @@
     "land_per_kw": 10,
     "permitting_per_kw": 15,
     "insurance_pct_of_capex": 0.005,
-    "property_tax_pct": 0.01
+    "property_tax_pct": 0.01,
+    "charging_cost_per_mwh": 30,
+    "residual_value_pct": 0.10
   },
 
   "technology": {
@@ -26,7 +28,17 @@
     "degradation_rate_annual": 0.025,
     "cycle_life": 6000,
     "warranty_years": 10,
-    "augmentation_year": 12
+    "augmentation_year": 12,
+    "cycles_per_day": 1.0
+  },
+
+  "financing": {
+    "debt_percent": 0.60,
+    "interest_rate": 0.045,
+    "loan_term_years": 15,
+    "cost_of_equity": 0.10,
+    "tax_rate": 0.21,
+    "description": "Typical utility project financing with 60% debt at 4.5% interest"
   },
 
   "benefits": [

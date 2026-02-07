@@ -14,6 +14,7 @@ from src.models.project import (
     BenefitStream,
     CostInputs,
     FinancialResults,
+    FinancingInputs,
     Project,
     ProjectBasics,
     TechnologySpecs,
@@ -162,11 +163,11 @@ def calculate_project_economics(project: Project) -> FinancialResults:
     """Run complete economic analysis on a BESS project.
 
     Calculation workflow:
-        1. Build annual cost stream (Year 0: CapEx; Years 1-N: O&M;
-           augmentation year: battery replacement; Year N: decommissioning).
+        1. Build annual cost stream (Year 0: CapEx; Years 1-N: O&M + charging;
+           augmentation year: battery replacement; Year N: decommissioning - residual).
         2. Aggregate annual benefit streams from all BenefitStream objects.
         3. Apply degradation to energy-based calculations.
-        4. Discount all cash flows to present value.
+        4. Discount all cash flows to present value using WACC or discount rate.
         5. Calculate NPV, BCR, IRR, payback, LCOS, and breakeven CapEx.
 
     Args:
@@ -183,7 +184,8 @@ def calculate_project_economics(project: Project) -> FinancialResults:
     tech = project.technology
     costs = project.costs
     n = basics.analysis_period_years
-    r = basics.discount_rate
+    # Use WACC if financing structure provided, otherwise use discount_rate
+    r = project.get_discount_rate()
 
     capacity_kw = basics.capacity_mw * 1000
     capacity_kwh = basics.capacity_mwh * 1000
@@ -215,14 +217,18 @@ def calculate_project_economics(project: Project) -> FinancialResults:
     for t in range(1, n + 1):
         annual_costs[t] += costs.fom_per_kw_year * capacity_kw
 
-    # Years 1-N: Variable O&M (based on annual discharge energy)
-    # Assume 1 full cycle per day, 365 days/year, adjusted for degradation
+    # Years 1-N: Variable O&M + Charging costs (based on annual discharge energy)
+    # Uses cycles_per_day instead of hardcoded 1 cycle
     for t in range(1, n + 1):
         degradation_factor = (1 - tech.degradation_rate_annual) ** (t - 1)
         annual_discharge_mwh = (
-            basics.capacity_mwh * 365 * tech.round_trip_efficiency * degradation_factor
+            basics.capacity_mwh * tech.cycles_per_day * 365 * tech.round_trip_efficiency * degradation_factor
         )
         annual_costs[t] += costs.vom_per_mwh * annual_discharge_mwh
+
+        # Charging cost: energy needed to charge = discharge / RTE
+        annual_charge_mwh = annual_discharge_mwh / tech.round_trip_efficiency
+        annual_costs[t] += costs.charging_cost_per_mwh * annual_charge_mwh
 
     # Years 1-N: Insurance (common to all utility projects)
     # Based on percentage of total CapEx
@@ -245,8 +251,10 @@ def calculate_project_economics(project: Project) -> FinancialResults:
         adjusted_aug_cost = costs.get_augmentation_cost(aug_year)
         annual_costs[aug_year] += adjusted_aug_cost * capacity_kwh
 
-    # Final year: decommissioning
-    annual_costs[n] += costs.decommissioning_per_kw * capacity_kw
+    # Final year: decommissioning minus residual value
+    decommissioning_cost = costs.decommissioning_per_kw * capacity_kw
+    residual_value = total_capex * costs.residual_value_pct
+    annual_costs[n] += decommissioning_cost - residual_value
 
     # --- Build annual benefit stream ---
     annual_benefits = [0.0] * (n + 1)
@@ -286,7 +294,7 @@ def calculate_project_economics(project: Project) -> FinancialResults:
     for t in range(1, n + 1):
         degradation_factor = (1 - tech.degradation_rate_annual) ** (t - 1)
         annual_energy[t] = (
-            basics.capacity_mwh * 365 * tech.round_trip_efficiency * degradation_factor
+            basics.capacity_mwh * tech.cycles_per_day * 365 * tech.round_trip_efficiency * degradation_factor
         )
     lcos = calculate_lcos(annual_costs, annual_energy, r)
 

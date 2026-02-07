@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from typing import Dict, List
 
-from src.models.project import BenefitStream, CostInputs, Project, TechnologySpecs
+from src.models.project import BenefitStream, CostInputs, FinancingInputs, Project, TechnologySpecs
 
 
 # Default library directory relative to project root
@@ -108,6 +108,9 @@ class AssumptionLibrary:
             permitting_per_kw=cost_data.get("permitting_per_kw", 15.0),
             insurance_pct_of_capex=cost_data.get("insurance_pct_of_capex", 0.005),
             property_tax_pct=cost_data.get("property_tax_pct", 0.01),
+            # Charging cost and residual value
+            charging_cost_per_mwh=cost_data.get("charging_cost_per_mwh", 30.0),
+            residual_value_pct=cost_data.get("residual_value_pct", 0.10),
         )
 
         # Apply technology specs
@@ -119,7 +122,19 @@ class AssumptionLibrary:
             cycle_life=tech_data.get("cycle_life", project.technology.cycle_life),
             warranty_years=tech_data.get("warranty_years", project.technology.warranty_years),
             augmentation_year=tech_data.get("augmentation_year", project.technology.augmentation_year),
+            cycles_per_day=tech_data.get("cycles_per_day", 1.0),
         )
+
+        # Apply financing structure if provided
+        financing_data = lib.get("financing", {})
+        if financing_data:
+            project.financing = FinancingInputs(
+                debt_percent=financing_data.get("debt_percent", 0.60),
+                interest_rate=financing_data.get("interest_rate", 0.05),
+                loan_term_years=financing_data.get("loan_term_years", 15),
+                cost_of_equity=financing_data.get("cost_of_equity", 0.10),
+                tax_rate=financing_data.get("tax_rate", 0.21),
+            )
 
         # Build benefit streams
         project.benefits = []
