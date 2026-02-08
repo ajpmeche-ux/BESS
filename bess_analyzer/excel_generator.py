@@ -60,6 +60,7 @@ def create_workbook(output_path: str, with_macros: bool = True):
     ws_sensitivity = workbook.add_worksheet('Sensitivity')
     ws_methodology = workbook.add_worksheet('Methodology')
     ws_library_data = workbook.add_worksheet('Library_Data')
+    ws_vba_code = workbook.add_worksheet('VBA_Code')
 
     # Build each sheet
     create_inputs_sheet(workbook, ws_inputs, formats)
@@ -69,6 +70,7 @@ def create_workbook(output_path: str, with_macros: bool = True):
     create_sensitivity_sheet(workbook, ws_sensitivity, formats, cf_totals_row)
     create_methodology_sheet(workbook, ws_methodology, formats)
     create_library_data_sheet(workbook, ws_library_data, formats)
+    create_vba_code_sheet(workbook, ws_vba_code, formats)
 
     workbook.close()
 
@@ -81,9 +83,11 @@ def create_workbook(output_path: str, with_macros: bool = True):
         print("\nNote: You may need to enable macros when opening the file.")
     else:
         print(f"Workbook created: {output_path}")
-        print("\nNote: Created without VBA macros (vbaProject.bin not found).")
-        print("The buttons are present but will need manual macro assignment.")
-        print("To enable macros, see: create_vba_template.py")
+        print("\nTo enable VBA macros:")
+        print("1. Open the 'VBA_Code' sheet for complete instructions")
+        print("2. Save as Macro-Enabled Workbook (.xlsm)")
+        print("3. Open VBA Editor (Alt+F11) and paste the code into a Module")
+        print("4. Assign macros to buttons as needed")
 
 
 def create_formats(workbook):
@@ -1053,6 +1057,453 @@ def create_methodology_sheet(workbook, ws, formats):
                   "based on site-specific conditions, market dynamics, and evolving technology costs.")
     ws.write(f'B{row}', disclaimer, formats['wrap'])
     ws.set_row(row - 1, 45)
+
+
+def create_vba_code_sheet(workbook, ws, formats):
+    """Create VBA code reference sheet with complete macros and instructions."""
+
+    ws.set_column('A:A', 3)
+    ws.set_column('B:B', 100)
+    ws.set_column('C:C', 15)
+
+    # Create code format
+    code_fmt = workbook.add_format({
+        'font_name': 'Consolas',
+        'font_size': 9,
+        'text_wrap': True,
+        'valign': 'top',
+        'bg_color': '#F5F5F5',
+        'border': 1,
+        'border_color': '#CCCCCC'
+    })
+
+    step_fmt = workbook.add_format({
+        'bold': True,
+        'bg_color': '#E3F2FD',
+        'border': 1
+    })
+
+    row = 1
+    ws.merge_range('B1:C1', 'VBA Macro Code & Setup Instructions', formats['title'])
+    row = 3
+
+    # Instructions section
+    ws.merge_range(f'B{row}:C{row}', 'STEP-BY-STEP INSTRUCTIONS TO ENABLE MACROS', formats['section'])
+    row += 1
+
+    instructions = [
+        ("Step 1:", "Save this workbook as a Macro-Enabled Workbook (.xlsm)"),
+        ("", "File > Save As > Choose 'Excel Macro-Enabled Workbook (*.xlsm)'"),
+        ("Step 2:", "Open the VBA Editor"),
+        ("", "Press Alt + F11 (Windows) or Option + F11 (Mac)"),
+        ("Step 3:", "Insert a new Module"),
+        ("", "Right-click on 'VBAProject' in the left panel > Insert > Module"),
+        ("Step 4:", "Copy the VBA code below and paste it into the Module"),
+        ("", "Select all the code in the 'COMPLETE VBA CODE' section below"),
+        ("Step 5:", "Close the VBA Editor (File > Close and Return to Microsoft Excel)"),
+        ("Step 6:", "Create buttons on the Inputs sheet (optional)"),
+        ("", "Developer tab > Insert > Button (Form Control) > Draw button > Assign macro"),
+        ("", "Create buttons for: LoadNRELLibrary, LoadLazardLibrary, LoadCPUCLibrary"),
+        ("Step 7:", "Save the workbook again to preserve the macros"),
+    ]
+
+    for label, text in instructions:
+        if label:
+            ws.write(f'B{row}', label, step_fmt)
+            ws.write(f'C{row}', text)
+        else:
+            ws.write(f'B{row}', "    " + text, formats['tooltip'])
+        row += 1
+
+    row += 2
+
+    # Complete VBA Code section
+    ws.merge_range(f'B{row}:C{row}', 'COMPLETE VBA CODE - COPY ALL BELOW', formats['section'])
+    row += 1
+
+    vba_code = '''Option Explicit
+
+'=================================================================
+' BESS ANALYZER VBA MACROS
+' Copy this entire module into your VBA project
+'=================================================================
+
+Sub LoadNRELLibrary()
+    '-----------------------------------------------------------
+    ' Loads NREL ATB 2024 Moderate assumptions
+    '-----------------------------------------------------------
+    With ThisWorkbook.Sheets("Inputs")
+        ' Library name
+        .Range("C6").Value = "NREL ATB 2024 - Moderate"
+
+        ' Technology Specifications
+        .Range("C18").Value = "LFP"          ' Chemistry
+        .Range("C19").Value = 0.85           ' Round-Trip Efficiency
+        .Range("C20").Value = 0.025          ' Annual Degradation
+        .Range("C21").Value = 6000           ' Cycle Life
+        .Range("C22").Value = 12             ' Augmentation Year
+        .Range("C23").Value = 1              ' Cycles per Day
+
+        ' Cost Inputs
+        .Range("C28").Value = 160            ' CapEx ($/kWh)
+        .Range("C29").Value = 25             ' Fixed O&M ($/kW-year)
+        .Range("C30").Value = 0              ' Variable O&M ($/MWh)
+        .Range("C31").Value = 55             ' Augmentation Cost ($/kWh)
+        .Range("C32").Value = 10             ' Decommissioning ($/kW)
+        .Range("C33").Value = 30             ' Charging Cost ($/MWh)
+        .Range("C34").Value = 0.1            ' Residual Value (%)
+
+        ' Tax Credits
+        .Range("C37").Value = 0.3            ' ITC Base (30%)
+        .Range("C38").Value = 0              ' ITC Adders
+
+        ' Infrastructure Costs
+        .Range("C43").Value = 100            ' Interconnection ($/kW)
+        .Range("C44").Value = 10             ' Land ($/kW)
+        .Range("C45").Value = 15             ' Permitting ($/kW)
+        .Range("C46").Value = 0.005          ' Insurance (% of CapEx)
+        .Range("C47").Value = 0.01           ' Property Tax (%)
+
+        ' Financing Structure
+        .Range("C51").Value = 0.6            ' Debt Percentage
+        .Range("C52").Value = 0.045          ' Interest Rate
+        .Range("C53").Value = 15             ' Loan Term (years)
+        .Range("C54").Value = 0.1            ' Cost of Equity
+        .Range("C55").Value = 0.21           ' Tax Rate
+
+        ' Benefits ($/kW-year and escalation)
+        .Range("C59").Value = 150: .Range("D59").Value = 0.02   ' Resource Adequacy
+        .Range("C60").Value = 40: .Range("D60").Value = 0.015   ' Energy Arbitrage
+        .Range("C61").Value = 15: .Range("D61").Value = 0.01    ' Ancillary Services
+        .Range("C62").Value = 25: .Range("D62").Value = 0.02    ' T&D Deferral
+        .Range("C63").Value = 50: .Range("D63").Value = 0.02    ' Resilience Value
+        .Range("C64").Value = 25: .Range("D64").Value = 0.02    ' Renewable Integration
+        .Range("C65").Value = 15: .Range("D65").Value = 0.03    ' GHG Emissions Value
+        .Range("C66").Value = 8: .Range("D66").Value = 0.01     ' Voltage Support
+    End With
+
+    Application.Calculate
+    MsgBox "NREL ATB 2024 Moderate assumptions loaded successfully.", vbInformation, "Library Loaded"
+End Sub
+
+
+Sub LoadLazardLibrary()
+    '-----------------------------------------------------------
+    ' Loads Lazard LCOS v10.0 2025 assumptions
+    '-----------------------------------------------------------
+    With ThisWorkbook.Sheets("Inputs")
+        .Range("C6").Value = "Lazard LCOS 2025"
+
+        ' Technology
+        .Range("C18").Value = "LFP"
+        .Range("C19").Value = 0.86
+        .Range("C20").Value = 0.02
+        .Range("C21").Value = 6500
+        .Range("C22").Value = 12
+        .Range("C23").Value = 1
+
+        ' Costs
+        .Range("C28").Value = 145
+        .Range("C29").Value = 22
+        .Range("C30").Value = 0.5
+        .Range("C31").Value = 50
+        .Range("C32").Value = 8
+        .Range("C33").Value = 35
+        .Range("C34").Value = 0.1
+
+        ' Tax Credits
+        .Range("C37").Value = 0.3
+        .Range("C38").Value = 0
+
+        ' Infrastructure
+        .Range("C43").Value = 90
+        .Range("C44").Value = 8
+        .Range("C45").Value = 12
+        .Range("C46").Value = 0.005
+        .Range("C47").Value = 0.01
+
+        ' Financing
+        .Range("C51").Value = 0.55
+        .Range("C52").Value = 0.05
+        .Range("C53").Value = 15
+        .Range("C54").Value = 0.12
+        .Range("C55").Value = 0.21
+
+        ' Benefits
+        .Range("C59").Value = 140: .Range("D59").Value = 0.02
+        .Range("C60").Value = 45: .Range("D60").Value = 0.02
+        .Range("C61").Value = 12: .Range("D61").Value = 0.01
+        .Range("C62").Value = 20: .Range("D62").Value = 0.015
+        .Range("C63").Value = 45: .Range("D63").Value = 0.02
+        .Range("C64").Value = 20: .Range("D64").Value = 0.02
+        .Range("C65").Value = 12: .Range("D65").Value = 0.03
+        .Range("C66").Value = 6: .Range("D66").Value = 0.01
+    End With
+
+    Application.Calculate
+    MsgBox "Lazard LCOS 2025 assumptions loaded successfully.", vbInformation, "Library Loaded"
+End Sub
+
+
+Sub LoadCPUCLibrary()
+    '-----------------------------------------------------------
+    ' Loads CPUC California 2024 assumptions
+    ' Includes 10% ITC Energy Community Adder
+    '-----------------------------------------------------------
+    With ThisWorkbook.Sheets("Inputs")
+        .Range("C6").Value = "CPUC California 2024"
+
+        ' Technology
+        .Range("C18").Value = "LFP"
+        .Range("C19").Value = 0.85
+        .Range("C20").Value = 0.025
+        .Range("C21").Value = 6000
+        .Range("C22").Value = 12
+        .Range("C23").Value = 1
+
+        ' Costs
+        .Range("C28").Value = 155
+        .Range("C29").Value = 26
+        .Range("C30").Value = 0
+        .Range("C31").Value = 52
+        .Range("C32").Value = 12
+        .Range("C33").Value = 25
+        .Range("C34").Value = 0.1
+
+        ' Tax Credits (includes Energy Community adder)
+        .Range("C37").Value = 0.3
+        .Range("C38").Value = 0.1            ' 10% Energy Community Adder
+
+        ' Infrastructure (California-specific higher costs)
+        .Range("C43").Value = 120
+        .Range("C44").Value = 15
+        .Range("C45").Value = 20
+        .Range("C46").Value = 0.005
+        .Range("C47").Value = 0.0105         ' CA property tax rate
+
+        ' Financing (IOU-style favorable terms)
+        .Range("C51").Value = 0.65
+        .Range("C52").Value = 0.04
+        .Range("C53").Value = 20
+        .Range("C54").Value = 0.095
+        .Range("C55").Value = 0.21
+
+        ' Benefits (California premium values)
+        .Range("C59").Value = 180: .Range("D59").Value = 0.025  ' RA premium in CA
+        .Range("C60").Value = 35: .Range("D60").Value = 0.02
+        .Range("C61").Value = 10: .Range("D61").Value = 0.01
+        .Range("C62").Value = 25: .Range("D62").Value = 0.015
+        .Range("C63").Value = 60: .Range("D63").Value = 0.02   ' PSPS resilience value
+        .Range("C64").Value = 30: .Range("D64").Value = 0.025
+        .Range("C65").Value = 20: .Range("D65").Value = 0.03
+        .Range("C66").Value = 10: .Range("D66").Value = 0.01
+    End With
+
+    Application.Calculate
+    MsgBox "CPUC California 2024 assumptions loaded." & vbCrLf & _
+           "Note: Includes 10% ITC Energy Community Adder.", vbInformation, "Library Loaded"
+End Sub
+
+
+Sub GenerateReport()
+    '-----------------------------------------------------------
+    ' Creates a summary report on a new "Report" sheet
+    '-----------------------------------------------------------
+    Dim wsReport As Worksheet
+    Dim wsResults As Worksheet
+    Dim wsInputs As Worksheet
+    Dim row As Long
+
+    Set wsResults = ThisWorkbook.Sheets("Results")
+    Set wsInputs = ThisWorkbook.Sheets("Inputs")
+
+    ' Delete existing Report sheet if it exists
+    On Error Resume Next
+    Application.DisplayAlerts = False
+    ThisWorkbook.Sheets("Report").Delete
+    Application.DisplayAlerts = True
+    On Error GoTo 0
+
+    ' Create new Report sheet
+    Set wsReport = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+    wsReport.Name = "Report"
+
+    row = 2
+    wsReport.Cells(row, 2).Value = "BESS ECONOMIC ANALYSIS REPORT"
+    wsReport.Cells(row, 2).Font.Bold = True
+    wsReport.Cells(row, 2).Font.Size = 18
+    wsReport.Range("B" & row & ":F" & row).Merge
+    row = row + 2
+
+    ' Project Summary
+    wsReport.Cells(row, 2).Value = "PROJECT SUMMARY"
+    wsReport.Cells(row, 2).Font.Bold = True
+    wsReport.Cells(row, 2).Interior.Color = RGB(227, 242, 253)
+    row = row + 1
+
+    wsReport.Cells(row, 2).Value = "Project:"
+    wsReport.Cells(row, 3).Value = wsInputs.Range("C7").Value
+    row = row + 1
+    wsReport.Cells(row, 2).Value = "Location:"
+    wsReport.Cells(row, 3).Value = wsInputs.Range("C9").Value
+    row = row + 1
+    wsReport.Cells(row, 2).Value = "Capacity:"
+    wsReport.Cells(row, 3).Value = wsInputs.Range("C10").Value & " MW / " & wsInputs.Range("C12").Value & " MWh"
+    row = row + 1
+    wsReport.Cells(row, 2).Value = "Assumptions:"
+    wsReport.Cells(row, 3).Value = wsInputs.Range("C6").Value
+    row = row + 2
+
+    ' Key Metrics
+    wsReport.Cells(row, 2).Value = "KEY FINANCIAL METRICS"
+    wsReport.Cells(row, 2).Font.Bold = True
+    wsReport.Cells(row, 2).Interior.Color = RGB(227, 242, 253)
+    row = row + 1
+
+    wsReport.Cells(row, 2).Value = "Benefit-Cost Ratio (BCR):"
+    wsReport.Cells(row, 3).Value = wsResults.Range("C11").Value
+    wsReport.Cells(row, 3).NumberFormat = "0.00"
+    row = row + 1
+    wsReport.Cells(row, 2).Value = "Net Present Value (NPV):"
+    wsReport.Cells(row, 3).Value = wsResults.Range("C12").Value
+    wsReport.Cells(row, 3).NumberFormat = "$#,##0"
+    row = row + 1
+    wsReport.Cells(row, 2).Value = "Internal Rate of Return (IRR):"
+    wsReport.Cells(row, 3).Value = wsResults.Range("C13").Value
+    wsReport.Cells(row, 3).NumberFormat = "0.0%"
+    row = row + 1
+    wsReport.Cells(row, 2).Value = "Payback Period:"
+    wsReport.Cells(row, 3).Value = wsResults.Range("C14").Value
+    wsReport.Cells(row, 3).NumberFormat = "0.0 "" years"""
+    row = row + 1
+    wsReport.Cells(row, 2).Value = "LCOS:"
+    wsReport.Cells(row, 3).Value = wsResults.Range("C15").Value
+    wsReport.Cells(row, 3).NumberFormat = "$#,##0 ""/MWh"""
+    row = row + 2
+
+    ' Recommendation
+    wsReport.Cells(row, 2).Value = "RECOMMENDATION"
+    wsReport.Cells(row, 2).Font.Bold = True
+    wsReport.Cells(row, 2).Interior.Color = RGB(227, 242, 253)
+    row = row + 1
+
+    ' Color-code recommendation based on BCR
+    Dim bcr As Double
+    bcr = wsResults.Range("C11").Value
+    If bcr >= 1.5 Then
+        wsReport.Cells(row, 2).Value = "STRONG PROJECT - Proceed with development"
+        wsReport.Cells(row, 2).Font.Color = RGB(0, 128, 0)
+    ElseIf bcr >= 1 Then
+        wsReport.Cells(row, 2).Value = "MARGINAL PROJECT - Review assumptions carefully"
+        wsReport.Cells(row, 2).Font.Color = RGB(255, 165, 0)
+    Else
+        wsReport.Cells(row, 2).Value = "NOT RECOMMENDED - Costs exceed benefits"
+        wsReport.Cells(row, 2).Font.Color = RGB(255, 0, 0)
+    End If
+    wsReport.Cells(row, 2).Font.Bold = True
+
+    ' Format columns
+    wsReport.Columns("B").ColumnWidth = 25
+    wsReport.Columns("C").ColumnWidth = 35
+
+    MsgBox "Report generated on 'Report' sheet.", vbInformation, "Report Ready"
+End Sub
+
+
+Sub ExportToPDF()
+    '-----------------------------------------------------------
+    ' Exports the Report sheet to PDF
+    '-----------------------------------------------------------
+    Dim wsReport As Worksheet
+    Dim filePath As String
+
+    On Error Resume Next
+    Set wsReport = ThisWorkbook.Sheets("Report")
+    On Error GoTo 0
+
+    If wsReport Is Nothing Then
+        MsgBox "Please run 'Generate Report' first to create the Report sheet.", vbExclamation, "No Report Found"
+        Exit Sub
+    End If
+
+    filePath = Application.GetSaveAsFilename( _
+        InitialFileName:="BESS_Analysis_Report.pdf", _
+        FileFilter:="PDF Files (*.pdf), *.pdf", _
+        Title:="Save Report as PDF")
+
+    If filePath <> "False" Then
+        wsReport.ExportAsFixedFormat Type:=xlTypePDF, Filename:=filePath
+        MsgBox "PDF exported successfully to:" & vbCrLf & filePath, vbInformation, "Export Complete"
+    End If
+End Sub
+
+
+Sub RefreshCalculations()
+    '-----------------------------------------------------------
+    ' Forces recalculation of all formulas
+    '-----------------------------------------------------------
+    Application.CalculateFull
+    MsgBox "All calculations refreshed.", vbInformation, "Refresh Complete"
+End Sub
+
+
+Sub ShowAbout()
+    '-----------------------------------------------------------
+    ' Shows information about the BESS Analyzer
+    '-----------------------------------------------------------
+    MsgBox "BESS Economic Analyzer" & vbCrLf & vbCrLf & _
+           "Version: 1.0" & vbCrLf & _
+           "Libraries: NREL ATB 2024, Lazard LCOS 2025, CPUC CA 2024" & vbCrLf & vbCrLf & _
+           "This tool performs benefit-cost analysis for utility-scale" & vbCrLf & _
+           "battery energy storage systems (BESS) using industry-standard" & vbCrLf & _
+           "assumptions and methodologies.", vbInformation, "About BESS Analyzer"
+End Sub'''
+
+    # Write code in multiple rows for visibility
+    code_lines = vba_code.strip().split('\n')
+
+    for line in code_lines:
+        ws.write(row, 1, line, code_fmt)
+        row += 1
+
+    row += 2
+
+    # Quick Reference section
+    ws.merge_range(f'B{row}:C{row}', 'AVAILABLE MACROS - QUICK REFERENCE', formats['section'])
+    row += 1
+
+    macros = [
+        ("LoadNRELLibrary", "Loads NREL Annual Technology Baseline 2024 (Moderate) assumptions"),
+        ("LoadLazardLibrary", "Loads Lazard Levelized Cost of Storage v10.0 (2025) assumptions"),
+        ("LoadCPUCLibrary", "Loads CPUC California 2024 assumptions with 10% ITC Energy Community Adder"),
+        ("GenerateReport", "Creates a summary report on a new 'Report' sheet"),
+        ("ExportToPDF", "Exports the Report sheet to a PDF file"),
+        ("RefreshCalculations", "Forces full recalculation of all workbook formulas"),
+        ("ShowAbout", "Displays information about the BESS Analyzer"),
+    ]
+
+    for macro_name, description in macros:
+        ws.write(f'B{row}', macro_name, formats['bold'])
+        ws.write(f'C{row}', description)
+        row += 1
+
+    row += 2
+
+    # Troubleshooting section
+    ws.merge_range(f'B{row}:C{row}', 'TROUBLESHOOTING', formats['section'])
+    row += 1
+
+    troubleshooting = [
+        "If buttons don't work: Make sure you saved as .xlsm and macros are enabled",
+        "If macros are disabled: Go to File > Options > Trust Center > Trust Center Settings > Macro Settings",
+        "If cell references are wrong: The VBA code uses specific cell addresses - check the Inputs sheet layout",
+        "To edit macros: Press Alt+F11 to open VBA Editor, then modify the code in the Module",
+        "To assign macros to buttons: Right-click button > Assign Macro > Select from list",
+    ]
+
+    for tip in troubleshooting:
+        ws.write(f'B{row}', "• " + tip, formats['tooltip'])
+        row += 1
 
 
 def create_library_data_sheet(workbook, ws, formats):
