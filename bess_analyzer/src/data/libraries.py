@@ -6,14 +6,26 @@ and CPUC California assumption sets.
 """
 
 import json
+import sys
 from pathlib import Path
 from typing import Dict, List
 
 from src.models.project import BenefitStream, CostInputs, FinancingInputs, Project, TechnologySpecs
 
 
-# Default library directory relative to project root
-_DEFAULT_LIBRARY_DIR = Path(__file__).resolve().parent.parent.parent / "resources" / "libraries"
+def _get_resource_path(relative_path: str) -> Path:
+    """Get absolute path to resource, works for dev and for PyInstaller."""
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        # Running as PyInstaller bundle
+        base_path = Path(sys._MEIPASS)
+    else:
+        # Running in development
+        base_path = Path(__file__).resolve().parent.parent.parent
+    return base_path / relative_path
+
+
+# Default library directory - handles both dev and bundled modes
+_DEFAULT_LIBRARY_DIR = _get_resource_path("resources/libraries")
 
 
 class AssumptionLibrary:

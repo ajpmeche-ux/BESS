@@ -9,3 +9,6 @@ venv
 .pytest_cache
 .coverage
 htmlcov
+
+# Allow PyInstaller spec file (overrides parent .gitignore)
+!bess_analyzer.spec
