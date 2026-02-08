@@ -22,6 +22,7 @@ from src.data.storage import load_project, save_project
 from src.data.validators import validate_project
 from src.gui.input_forms import InputFormWidget
 from src.gui.results_display import ResultsWidget
+from src.gui.sensitivity_widget import SensitivityWidget
 from src.models.calculations import calculate_project_economics
 from src.models.project import Project
 from src.reports.executive import generate_executive_summary
@@ -50,8 +51,10 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.input_form = InputFormWidget()
         self.results_widget = ResultsWidget()
+        self.sensitivity_widget = SensitivityWidget()
         self.tabs.addTab(self.input_form, "Project Inputs")
         self.tabs.addTab(self.results_widget, "Results")
+        self.tabs.addTab(self.sensitivity_widget, "Sensitivity Analysis")
         layout.addWidget(self.tabs)
 
         # Action buttons
@@ -70,6 +73,13 @@ class MainWindow(QMainWindow):
         self.report_btn.setEnabled(False)
         self.report_btn.clicked.connect(self._generate_report)
         btn_layout.addWidget(self.report_btn)
+
+        self.excel_btn = QPushButton("Export to Excel")
+        self.excel_btn.setMinimumHeight(36)
+        self.excel_btn.setStyleSheet("padding: 6px 20px;")
+        self.excel_btn.setEnabled(False)
+        self.excel_btn.clicked.connect(self._export_to_excel)
+        btn_layout.addWidget(self.excel_btn)
 
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
@@ -93,6 +103,7 @@ class MainWindow(QMainWindow):
         # Reports menu
         reports_menu = menubar.addMenu("Reports")
         reports_menu.addAction("Executive Summary PDF", self._generate_report)
+        reports_menu.addAction("Export to Excel", self._export_to_excel)
 
         # Help menu
         help_menu = menubar.addMenu("Help")
@@ -106,6 +117,7 @@ class MainWindow(QMainWindow):
         self._current_results = None
         self.input_form.load_project(Project())
         self.report_btn.setEnabled(False)
+        self.excel_btn.setEnabled(False)
         self.tabs.setCurrentIndex(0)
         self.statusBar().showMessage("New project created.")
 
@@ -180,8 +192,10 @@ class MainWindow(QMainWindow):
             project.results = results
 
             self.results_widget.display_results(project, results)
+            self.sensitivity_widget.display_sensitivity(project, results)
             self.tabs.setCurrentIndex(1)
             self.report_btn.setEnabled(True)
+            self.excel_btn.setEnabled(True)
             self.statusBar().showMessage(
                 f"Analysis complete. BCR: {results.bcr:.2f} | NPV: ${results.npv / 1e6:,.1f}M"
             )
@@ -208,6 +222,30 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Report Error", f"Failed to generate report:\n{e}")
 
+    def _export_to_excel(self):
+        if not self._current_project or not self._current_results:
+            QMessageBox.warning(self, "No Results", "Run 'Calculate Economics' first.")
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export to Excel", "BESS_Analysis.xlsx",
+            "Excel Files (*.xlsx);;All Files (*)"
+        )
+        if not path:
+            return
+
+        try:
+            from excel_generator import create_workbook
+            create_workbook(path)
+            self.statusBar().showMessage(f"Excel exported: {path}")
+            QMessageBox.information(
+                self, "Export Complete",
+                f"Excel workbook saved to:\n{path}\n\n"
+                "Note: Open the VBA_Code sheet for macro instructions."
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to export Excel:\n{e}")
+
     def _show_about(self):
         QMessageBox.about(
             self,
@@ -217,5 +255,11 @@ class MainWindow(QMainWindow):
             "Calculates NPV, BCR, IRR, and LCOS for utility-scale<br>"
             "battery storage projects using industry-standard assumptions.<br><br>"
             "Supports NREL ATB, Lazard LCOS, and CPUC assumption libraries.<br><br>"
+            "<b>Features:</b><br>"
+            "- Financing structure with WACC calculation<br>"
+            "- Infrastructure costs (interconnection, land, permitting)<br>"
+            "- Investment Tax Credit (ITC) with adders<br>"
+            "- Sensitivity analysis tables<br>"
+            "- PDF reports and Excel export<br><br>"
             "<i>Built for utility planners and regulatory analysts.</i>",
         )

@@ -26,7 +26,14 @@ from PyQt6.QtWidgets import (
 )
 
 from src.data.libraries import AssumptionLibrary
-from src.models.project import BenefitStream, CostInputs, Project, ProjectBasics, TechnologySpecs
+from src.models.project import (
+    BenefitStream,
+    CostInputs,
+    FinancingInputs,
+    Project,
+    ProjectBasics,
+    TechnologySpecs,
+)
 
 
 class InputFormWidget(QWidget):
@@ -56,7 +63,16 @@ class InputFormWidget(QWidget):
         # Section 4: Costs
         layout.addWidget(self._create_costs_section())
 
-        # Section 5: Benefits
+        # Section 5: Infrastructure Costs
+        layout.addWidget(self._create_infrastructure_section())
+
+        # Section 6: Tax Credits
+        layout.addWidget(self._create_itc_section())
+
+        # Section 7: Financing Structure
+        layout.addWidget(self._create_financing_section())
+
+        # Section 8: Benefits
         layout.addWidget(self._create_benefits_section())
 
         layout.addStretch()
@@ -179,6 +195,13 @@ class InputFormWidget(QWidget):
         self.augmentation_year_spin.setSuffix(" year")
         layout.addLayout(self._row("Augmentation Year:", self.augmentation_year_spin))
 
+        self.cycles_per_day_spin = QDoubleSpinBox()
+        self.cycles_per_day_spin.setRange(0.1, 3.0)
+        self.cycles_per_day_spin.setValue(1.0)
+        self.cycles_per_day_spin.setSuffix(" cycles")
+        self.cycles_per_day_spin.setDecimals(1)
+        layout.addLayout(self._row("Cycles per Day:", self.cycles_per_day_spin))
+
         return group
 
     def _create_costs_section(self) -> QGroupBox:
@@ -225,7 +248,154 @@ class InputFormWidget(QWidget):
         self.decom_spin.setDecimals(1)
         layout.addLayout(self._row("Decommissioning:", self.decom_spin))
 
+        self.charging_cost_spin = QDoubleSpinBox()
+        self.charging_cost_spin.setRange(0, 100.0)
+        self.charging_cost_spin.setValue(30.0)
+        self.charging_cost_spin.setPrefix("$")
+        self.charging_cost_spin.setSuffix(" /MWh")
+        self.charging_cost_spin.setDecimals(0)
+        layout.addLayout(self._row("Charging Cost:", self.charging_cost_spin))
+
+        self.residual_value_spin = QDoubleSpinBox()
+        self.residual_value_spin.setRange(0, 50.0)
+        self.residual_value_spin.setValue(10.0)
+        self.residual_value_spin.setSuffix(" %")
+        self.residual_value_spin.setDecimals(1)
+        layout.addLayout(self._row("Residual Value:", self.residual_value_spin))
+
         return group
+
+    def _create_infrastructure_section(self) -> QGroupBox:
+        group = QGroupBox("Infrastructure Costs")
+        layout = QVBoxLayout(group)
+
+        self.interconnection_spin = QDoubleSpinBox()
+        self.interconnection_spin.setRange(0, 300.0)
+        self.interconnection_spin.setValue(100.0)
+        self.interconnection_spin.setPrefix("$")
+        self.interconnection_spin.setSuffix(" /kW")
+        self.interconnection_spin.setDecimals(0)
+        layout.addLayout(self._row("Interconnection:", self.interconnection_spin))
+
+        self.land_spin = QDoubleSpinBox()
+        self.land_spin.setRange(0, 50.0)
+        self.land_spin.setValue(10.0)
+        self.land_spin.setPrefix("$")
+        self.land_spin.setSuffix(" /kW")
+        self.land_spin.setDecimals(0)
+        layout.addLayout(self._row("Land:", self.land_spin))
+
+        self.permitting_spin = QDoubleSpinBox()
+        self.permitting_spin.setRange(0, 50.0)
+        self.permitting_spin.setValue(15.0)
+        self.permitting_spin.setPrefix("$")
+        self.permitting_spin.setSuffix(" /kW")
+        self.permitting_spin.setDecimals(0)
+        layout.addLayout(self._row("Permitting:", self.permitting_spin))
+
+        self.insurance_spin = QDoubleSpinBox()
+        self.insurance_spin.setRange(0, 2.0)
+        self.insurance_spin.setValue(0.5)
+        self.insurance_spin.setSuffix(" % of CapEx")
+        self.insurance_spin.setDecimals(2)
+        layout.addLayout(self._row("Insurance:", self.insurance_spin))
+
+        self.property_tax_spin = QDoubleSpinBox()
+        self.property_tax_spin.setRange(0, 3.0)
+        self.property_tax_spin.setValue(1.0)
+        self.property_tax_spin.setSuffix(" %")
+        self.property_tax_spin.setDecimals(2)
+        layout.addLayout(self._row("Property Tax:", self.property_tax_spin))
+
+        return group
+
+    def _create_itc_section(self) -> QGroupBox:
+        group = QGroupBox("Investment Tax Credit (ITC)")
+        layout = QVBoxLayout(group)
+
+        self.itc_base_spin = QDoubleSpinBox()
+        self.itc_base_spin.setRange(0, 50.0)
+        self.itc_base_spin.setValue(30.0)
+        self.itc_base_spin.setSuffix(" %")
+        self.itc_base_spin.setDecimals(0)
+        self.itc_base_spin.valueChanged.connect(self._update_total_itc)
+        layout.addLayout(self._row("ITC Base Rate:", self.itc_base_spin))
+
+        self.itc_adders_spin = QDoubleSpinBox()
+        self.itc_adders_spin.setRange(0, 20.0)
+        self.itc_adders_spin.setValue(0.0)
+        self.itc_adders_spin.setSuffix(" %")
+        self.itc_adders_spin.setDecimals(0)
+        self.itc_adders_spin.setToolTip("Energy Community (+10%) or Domestic Content (+10%)")
+        self.itc_adders_spin.valueChanged.connect(self._update_total_itc)
+        layout.addLayout(self._row("ITC Adders:", self.itc_adders_spin))
+
+        self.itc_total_label = QLabel("30.0%")
+        self.itc_total_label.setStyleSheet("font-weight: bold; color: #2e7d32;")
+        layout.addLayout(self._row("Total ITC:", self.itc_total_label))
+
+        return group
+
+    def _create_financing_section(self) -> QGroupBox:
+        group = QGroupBox("Financing Structure (WACC Calculation)")
+        layout = QVBoxLayout(group)
+
+        self.debt_pct_spin = QDoubleSpinBox()
+        self.debt_pct_spin.setRange(0, 100.0)
+        self.debt_pct_spin.setValue(60.0)
+        self.debt_pct_spin.setSuffix(" %")
+        self.debt_pct_spin.setDecimals(0)
+        self.debt_pct_spin.valueChanged.connect(self._update_wacc)
+        layout.addLayout(self._row("Debt Percentage:", self.debt_pct_spin))
+
+        self.interest_rate_spin = QDoubleSpinBox()
+        self.interest_rate_spin.setRange(0, 15.0)
+        self.interest_rate_spin.setValue(5.0)
+        self.interest_rate_spin.setSuffix(" %")
+        self.interest_rate_spin.setDecimals(1)
+        self.interest_rate_spin.valueChanged.connect(self._update_wacc)
+        layout.addLayout(self._row("Interest Rate:", self.interest_rate_spin))
+
+        self.loan_term_spin = QSpinBox()
+        self.loan_term_spin.setRange(5, 30)
+        self.loan_term_spin.setValue(15)
+        self.loan_term_spin.setSuffix(" years")
+        layout.addLayout(self._row("Loan Term:", self.loan_term_spin))
+
+        self.cost_of_equity_spin = QDoubleSpinBox()
+        self.cost_of_equity_spin.setRange(5.0, 25.0)
+        self.cost_of_equity_spin.setValue(10.0)
+        self.cost_of_equity_spin.setSuffix(" %")
+        self.cost_of_equity_spin.setDecimals(1)
+        self.cost_of_equity_spin.valueChanged.connect(self._update_wacc)
+        layout.addLayout(self._row("Cost of Equity:", self.cost_of_equity_spin))
+
+        self.tax_rate_spin = QDoubleSpinBox()
+        self.tax_rate_spin.setRange(0, 40.0)
+        self.tax_rate_spin.setValue(21.0)
+        self.tax_rate_spin.setSuffix(" %")
+        self.tax_rate_spin.setDecimals(0)
+        self.tax_rate_spin.valueChanged.connect(self._update_wacc)
+        layout.addLayout(self._row("Tax Rate:", self.tax_rate_spin))
+
+        self.wacc_label = QLabel("6.1%")
+        self.wacc_label.setStyleSheet("font-weight: bold; color: #1565c0;")
+        layout.addLayout(self._row("Calculated WACC:", self.wacc_label))
+
+        return group
+
+    def _update_total_itc(self):
+        total = self.itc_base_spin.value() + self.itc_adders_spin.value()
+        self.itc_total_label.setText(f"{total:.1f}%")
+
+    def _update_wacc(self):
+        debt_pct = self.debt_pct_spin.value() / 100
+        equity_pct = 1 - debt_pct
+        interest = self.interest_rate_spin.value() / 100
+        cost_of_equity = self.cost_of_equity_spin.value() / 100
+        tax_rate = self.tax_rate_spin.value() / 100
+        wacc = equity_pct * cost_of_equity + debt_pct * interest * (1 - tax_rate)
+        self.wacc_label.setText(f"{wacc * 100:.1f}%")
 
     def _create_benefits_section(self) -> QGroupBox:
         group = QGroupBox("Benefit Streams")
@@ -326,6 +496,7 @@ class InputFormWidget(QWidget):
         self.degradation_spin.setValue(t.degradation_rate_annual * 100)
         self.cycle_life_spin.setValue(t.cycle_life)
         self.augmentation_year_spin.setValue(t.augmentation_year)
+        self.cycles_per_day_spin.setValue(t.cycles_per_day)
 
         c = project.costs
         self.capex_spin.setValue(c.capex_per_kwh)
@@ -333,6 +504,30 @@ class InputFormWidget(QWidget):
         self.vom_spin.setValue(c.vom_per_mwh)
         self.aug_cost_spin.setValue(c.augmentation_per_kwh)
         self.decom_spin.setValue(c.decommissioning_per_kw)
+        self.charging_cost_spin.setValue(c.charging_cost_per_mwh)
+        self.residual_value_spin.setValue(c.residual_value_pct * 100)
+
+        # Infrastructure costs
+        self.interconnection_spin.setValue(c.interconnection_per_kw)
+        self.land_spin.setValue(c.land_per_kw)
+        self.permitting_spin.setValue(c.permitting_per_kw)
+        self.insurance_spin.setValue(c.insurance_pct_of_capex * 100)
+        self.property_tax_spin.setValue(c.property_tax_pct * 100)
+
+        # ITC
+        self.itc_base_spin.setValue(c.itc_percent * 100)
+        self.itc_adders_spin.setValue(c.itc_adders * 100)
+        self._update_total_itc()
+
+        # Financing
+        if project.financing:
+            f = project.financing
+            self.debt_pct_spin.setValue(f.debt_percent * 100)
+            self.interest_rate_spin.setValue(f.interest_rate * 100)
+            self.loan_term_spin.setValue(f.loan_term_years)
+            self.cost_of_equity_spin.setValue(f.cost_of_equity * 100)
+            self.tax_rate_spin.setValue(f.tax_rate * 100)
+            self._update_wacc()
 
         # Benefits table
         self.benefits_table.setRowCount(0)
@@ -375,6 +570,7 @@ class InputFormWidget(QWidget):
             degradation_rate_annual=self.degradation_spin.value() / 100,
             cycle_life=self.cycle_life_spin.value(),
             augmentation_year=self.augmentation_year_spin.value(),
+            cycles_per_day=self.cycles_per_day_spin.value(),
         )
 
         costs = CostInputs(
@@ -383,6 +579,23 @@ class InputFormWidget(QWidget):
             vom_per_mwh=self.vom_spin.value(),
             augmentation_per_kwh=self.aug_cost_spin.value(),
             decommissioning_per_kw=self.decom_spin.value(),
+            charging_cost_per_mwh=self.charging_cost_spin.value(),
+            residual_value_pct=self.residual_value_spin.value() / 100,
+            interconnection_per_kw=self.interconnection_spin.value(),
+            land_per_kw=self.land_spin.value(),
+            permitting_per_kw=self.permitting_spin.value(),
+            insurance_pct_of_capex=self.insurance_spin.value() / 100,
+            property_tax_pct=self.property_tax_spin.value() / 100,
+            itc_percent=self.itc_base_spin.value() / 100,
+            itc_adders=self.itc_adders_spin.value() / 100,
+        )
+
+        financing = FinancingInputs(
+            debt_percent=self.debt_pct_spin.value() / 100,
+            interest_rate=self.interest_rate_spin.value() / 100,
+            loan_term_years=self.loan_term_spin.value(),
+            cost_of_equity=self.cost_of_equity_spin.value() / 100,
+            tax_rate=self.tax_rate_spin.value() / 100,
         )
 
         # Build benefit streams from table
@@ -417,6 +630,7 @@ class InputFormWidget(QWidget):
             basics=basics,
             technology=technology,
             costs=costs,
+            financing=financing,
             benefits=benefits,
             assumption_library=lib_name,
         )
