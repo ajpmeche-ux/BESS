@@ -20,6 +20,91 @@ import xlsxwriter
 from xlsxwriter.utility import xl_rowcol_to_cell
 
 
+# =============================================================================
+# CELL REFERENCE REGISTRY
+# =============================================================================
+# All cell references are defined here to ensure consistency between
+# the Excel formulas, VBA macros, and named ranges.
+
+class CellRefs:
+    """Central registry of all cell references in the Inputs sheet."""
+
+    # Library Selection
+    SELECTED_LIBRARY = 'C6'
+
+    # Project Basics (starting row 9)
+    PROJECT_NAME = 'C9'
+    PROJECT_ID = 'C10'
+    LOCATION = 'C11'
+    CAPACITY_MW = 'C12'
+    DURATION_HOURS = 'C13'
+    ENERGY_MWH = 'C14'  # Formula: =C12*C13
+    ANALYSIS_YEARS = 'C15'
+    DISCOUNT_RATE = 'C16'
+    OWNERSHIP_TYPE = 'C17'
+
+    # Technology Specifications (starting row 19)
+    CHEMISTRY = 'C19'
+    ROUND_TRIP_EFFICIENCY = 'C20'
+    ANNUAL_DEGRADATION = 'C21'
+    CYCLE_LIFE = 'C22'
+    AUGMENTATION_YEAR = 'C23'
+    CYCLES_PER_DAY = 'C24'
+
+    # Cost Inputs (starting row 26)
+    CAPEX_PER_KWH = 'C26'
+    FOM_PER_KW_YEAR = 'C27'
+    VOM_PER_MWH = 'C28'
+    AUGMENTATION_COST = 'C29'
+    DECOMMISSIONING = 'C30'
+    CHARGING_COST = 'C31'
+    RESIDUAL_VALUE = 'C32'
+
+    # Tax Credits (starting row 34)
+    ITC_BASE_RATE = 'C34'
+    ITC_ADDERS = 'C35'
+
+    # Infrastructure Costs (starting row 37)
+    INTERCONNECTION = 'C37'
+    LAND = 'C38'
+    PERMITTING = 'C39'
+    INSURANCE_PCT = 'C40'
+    PROPERTY_TAX_PCT = 'C41'
+
+    # Financing Structure (starting row 43)
+    DEBT_PERCENT = 'C43'
+    INTEREST_RATE = 'C44'
+    LOAN_TERM = 'C45'
+    COST_OF_EQUITY = 'C46'
+    TAX_RATE = 'C47'
+    WACC = 'C48'  # Formula
+
+    # Benefits (starting row 52, after headers at row 51)
+    BENEFIT_RA = 'C52'
+    BENEFIT_RA_ESC = 'D52'
+    BENEFIT_ARBITRAGE = 'C53'
+    BENEFIT_ARBITRAGE_ESC = 'D53'
+    BENEFIT_ANCILLARY = 'C54'
+    BENEFIT_ANCILLARY_ESC = 'D54'
+    BENEFIT_TD = 'C55'
+    BENEFIT_TD_ESC = 'D55'
+    BENEFIT_RESILIENCE = 'C56'
+    BENEFIT_RESILIENCE_ESC = 'D56'
+    BENEFIT_RENEWABLE = 'C57'
+    BENEFIT_RENEWABLE_ESC = 'D57'
+    BENEFIT_GHG = 'C58'
+    BENEFIT_GHG_ESC = 'D58'
+    BENEFIT_VOLTAGE = 'C59'
+    BENEFIT_VOLTAGE_ESC = 'D59'
+
+    # Benefit rows (for Cash_Flows formulas)
+    BENEFIT_ROWS = [52, 53, 54, 55, 56, 57, 58, 59]
+
+    # Cost Projections (starting row 61)
+    LEARNING_RATE = 'C61'
+    COST_BASE_YEAR = 'C62'
+
+
 def create_workbook(output_path: str, with_macros: bool = True):
     """Create the complete BESS Analyzer workbook.
 
@@ -296,28 +381,32 @@ def create_inputs_sheet(workbook, ws, formats):
     })
     row += 2
 
+    # Row 6: Selected Library
     ws.write(f'B{row}', 'Selected Library:', formats['bold'])
     ws.write(f'C{row}', 'Custom', formats['input'])
-    library_row = row
+    assert row == 6, f"Selected Library should be at row 6, got {row}"
     row += 2
 
     # === PROJECT BASICS ===
+    # Row 8: Section header
     ws.merge_range(f'B{row}:E{row}', 'PROJECT BASICS', formats['section'])
     row += 1
 
+    # Row 9-17: Project basics
     basics = [
-        ('Project Name', '', 'Text', 'Enter project name'),
-        ('Project ID', '', 'Text', 'Unique identifier'),
-        ('Location', '', 'Text', 'Site or market location'),
-        ('Capacity (MW)', 100, 'Number', 'Nameplate power capacity'),
-        ('Duration (hours)', 4, 'Number', 'Storage duration'),
-        ('Energy Capacity (MWh)', '=C10*C11', 'Formula', 'Auto-calculated: MW x hours'),
-        ('Analysis Period (years)', 20, 'Number', 'Economic analysis horizon'),
-        ('Discount Rate (%)', 0.07, 'Percent', 'Nominal discount rate for NPV'),
-        ('Ownership Type', 'Utility', 'Text', 'Utility (6-7% WACC) or Merchant (8-10%)'),
+        ('Project Name', '', 'Text', 'Enter project name'),                           # Row 9
+        ('Project ID', '', 'Text', 'Unique identifier'),                              # Row 10
+        ('Location', '', 'Text', 'Site or market location'),                          # Row 11
+        ('Capacity (MW)', 100, 'Number', 'Nameplate power capacity'),                 # Row 12
+        ('Duration (hours)', 4, 'Number', 'Storage duration'),                        # Row 13
+        ('Energy Capacity (MWh)', '=C12*C13', 'Formula', 'Auto-calculated: MW x hours'),  # Row 14
+        ('Analysis Period (years)', 20, 'Number', 'Economic analysis horizon'),       # Row 15
+        ('Discount Rate (%)', 0.07, 'Percent', 'Nominal discount rate for NPV'),      # Row 16
+        ('Ownership Type', 'Utility', 'Text', 'Utility (6-7% WACC) or Merchant (8-10%)'),  # Row 17
     ]
 
     basics_start = row
+    assert basics_start == 9, f"Basics should start at row 9, got {basics_start}"
     for label, value, dtype, tooltip in basics:
         ws.write(f'B{row}', label, formats['bold'])
         if dtype == 'Formula':
@@ -329,22 +418,23 @@ def create_inputs_sheet(workbook, ws, formats):
         ws.write(f'E{row}', tooltip, formats['tooltip'])
         row += 1
 
-    row += 1
-
     # === TECHNOLOGY SPECIFICATIONS ===
+    # Row 18: Section header
     ws.merge_range(f'B{row}:E{row}', 'TECHNOLOGY SPECIFICATIONS', formats['section'])
     row += 1
 
+    # Row 19-24: Technology specs
     tech_specs = [
-        ('Chemistry', 'LFP', 'Text', 'LFP, NMC, or Other'),
-        ('Round-Trip Efficiency (%)', 0.85, 'Percent', 'AC-AC efficiency'),
-        ('Annual Degradation (%)', 0.025, 'Percent', 'Capacity loss per year'),
-        ('Cycle Life', 6000, 'Number', 'Full-depth cycles before EOL'),
-        ('Augmentation Year', 12, 'Number', 'Year of battery replacement'),
-        ('Cycles per Day', 1.0, 'Number', 'Average daily charge/discharge cycles'),
+        ('Chemistry', 'LFP', 'Text', 'LFP, NMC, or Other'),                           # Row 19
+        ('Round-Trip Efficiency (%)', 0.85, 'Percent', 'AC-AC efficiency'),           # Row 20
+        ('Annual Degradation (%)', 0.025, 'Percent', 'Capacity loss per year'),       # Row 21
+        ('Cycle Life', 6000, 'Number', 'Full-depth cycles before EOL'),               # Row 22
+        ('Augmentation Year', 12, 'Number', 'Year of battery replacement'),           # Row 23
+        ('Cycles per Day', 1.0, 'Number', 'Average daily charge/discharge cycles'),   # Row 24
     ]
 
     tech_start = row
+    assert tech_start == 19, f"Tech should start at row 19, got {tech_start}"
     for label, value, dtype, tooltip in tech_specs:
         ws.write(f'B{row}', label, formats['bold'])
         if dtype == 'Percent':
@@ -354,63 +444,69 @@ def create_inputs_sheet(workbook, ws, formats):
         ws.write(f'E{row}', tooltip, formats['tooltip'])
         row += 1
 
-    row += 1
-
     # === COST INPUTS ===
+    # Row 25: Section header
     ws.merge_range(f'B{row}:E{row}', 'COST INPUTS (BESS)', formats['section'])
     row += 1
 
+    # Row 26-32: Cost inputs
     cost_inputs = [
-        ('CapEx ($/kWh)', 160, '$/kWh', 'Installed capital cost per kWh'),
-        ('Fixed O&M ($/kW-year)', 25, '$/kW-yr', 'Annual fixed O&M'),
-        ('Variable O&M ($/MWh)', 0, '$/MWh', 'Per-MWh discharge cost'),
-        ('Augmentation Cost ($/kWh)', 55, '$/kWh', 'Battery replacement cost'),
-        ('Decommissioning ($/kW)', 10, '$/kW', 'End-of-life cost'),
-        ('Charging Cost ($/MWh)', 30, '$/MWh', 'Grid electricity cost for charging'),
-        ('Residual Value (%)', 0.10, '%', 'End-of-life asset value as % of CapEx'),
+        ('CapEx ($/kWh)', 160, '$/kWh', 'Installed capital cost per kWh'),            # Row 26
+        ('Fixed O&M ($/kW-year)', 25, '$/kW-yr', 'Annual fixed O&M'),                 # Row 27
+        ('Variable O&M ($/MWh)', 0, '$/MWh', 'Per-MWh discharge cost'),               # Row 28
+        ('Augmentation Cost ($/kWh)', 55, '$/kWh', 'Battery replacement cost'),       # Row 29
+        ('Decommissioning ($/kW)', 10, '$/kW', 'End-of-life cost'),                   # Row 30
+        ('Charging Cost ($/MWh)', 30, '$/MWh', 'Grid electricity cost for charging'), # Row 31
+        ('Residual Value (%)', 0.10, '%', 'End-of-life asset value as % of CapEx'),   # Row 32
     ]
 
     cost_start = row
+    assert cost_start == 26, f"Costs should start at row 26, got {cost_start}"
     for label, value, unit, tooltip in cost_inputs:
         ws.write(f'B{row}', label, formats['bold'])
-        ws.write(f'C{row}', value, formats['input_currency'])
+        if '%' in unit:
+            ws.write(f'C{row}', value, formats['input_percent'])
+        else:
+            ws.write(f'C{row}', value, formats['input_currency'])
         ws.write(f'D{row}', unit)
         ws.write(f'E{row}', tooltip, formats['tooltip'])
         row += 1
 
-    row += 1
-
     # === TAX CREDITS ===
+    # Row 33: Section header
     ws.merge_range(f'B{row}:E{row}', 'TAX CREDITS (BESS-Specific under IRA)', formats['section'])
     row += 1
 
+    # Row 34-35: Tax credits
     tax_inputs = [
-        ('ITC Base Rate (%)', 0.30, '30% Investment Tax Credit under IRA'),
-        ('ITC Adders (%)', 0.0, 'Energy community +10%, Domestic content +10%'),
+        ('ITC Base Rate (%)', 0.30, '30% Investment Tax Credit under IRA'),           # Row 34
+        ('ITC Adders (%)', 0.0, 'Energy community +10%, Domestic content +10%'),      # Row 35
     ]
 
     itc_start = row
+    assert itc_start == 34, f"ITC should start at row 34, got {itc_start}"
     for label, value, tooltip in tax_inputs:
         ws.write(f'B{row}', label, formats['bold'])
         ws.write(f'C{row}', value, formats['input_percent'])
         ws.write(f'E{row}', tooltip, formats['tooltip'])
         row += 1
 
-    row += 1
-
     # === INFRASTRUCTURE COSTS ===
+    # Row 36: Section header
     ws.merge_range(f'B{row}:E{row}', 'INFRASTRUCTURE COSTS (Common to all projects)', formats['section'])
     row += 1
 
+    # Row 37-41: Infrastructure
     infra_inputs = [
-        ('Interconnection ($/kW)', 100, '$/kW', 'Network upgrades, studies'),
-        ('Land ($/kW)', 10, '$/kW', 'Site acquisition/lease'),
-        ('Permitting ($/kW)', 15, '$/kW', 'Permits, environmental review'),
-        ('Insurance (% of CapEx)', 0.005, '%', 'Annual insurance cost'),
-        ('Property Tax (%)', 0.01, '%', 'Annual property tax rate'),
+        ('Interconnection ($/kW)', 100, '$/kW', 'Network upgrades, studies'),         # Row 37
+        ('Land ($/kW)', 10, '$/kW', 'Site acquisition/lease'),                        # Row 38
+        ('Permitting ($/kW)', 15, '$/kW', 'Permits, environmental review'),           # Row 39
+        ('Insurance (% of CapEx)', 0.005, '%', 'Annual insurance cost'),              # Row 40
+        ('Property Tax (%)', 0.01, '%', 'Annual property tax rate'),                  # Row 41
     ]
 
     infra_start = row
+    assert infra_start == 37, f"Infrastructure should start at row 37, got {infra_start}"
     for label, value, unit, tooltip in infra_inputs:
         ws.write(f'B{row}', label, formats['bold'])
         if '%' in unit:
@@ -421,21 +517,22 @@ def create_inputs_sheet(workbook, ws, formats):
         ws.write(f'E{row}', tooltip, formats['tooltip'])
         row += 1
 
-    row += 1
-
     # === FINANCING STRUCTURE ===
+    # Row 42: Section header
     ws.merge_range(f'B{row}:E{row}', 'FINANCING STRUCTURE (For WACC Calculation)', formats['section'])
     row += 1
 
+    # Row 43-47: Financing
     financing_inputs = [
-        ('Debt Percentage (%)', 0.60, 'Debt/equity split (0.60 = 60% debt)'),
-        ('Interest Rate (%)', 0.05, 'Annual interest rate on debt'),
-        ('Loan Term (years)', 15, 'Debt amortization period'),
-        ('Cost of Equity (%)', 0.10, 'Required return on equity'),
-        ('Tax Rate (%)', 0.21, 'Corporate tax rate for interest deduction'),
+        ('Debt Percentage (%)', 0.60, 'Debt/equity split (0.60 = 60% debt)'),         # Row 43
+        ('Interest Rate (%)', 0.05, 'Annual interest rate on debt'),                  # Row 44
+        ('Loan Term (years)', 15, 'Debt amortization period'),                        # Row 45
+        ('Cost of Equity (%)', 0.10, 'Required return on equity'),                    # Row 46
+        ('Tax Rate (%)', 0.21, 'Corporate tax rate for interest deduction'),          # Row 47
     ]
 
     financing_start = row
+    assert financing_start == 43, f"Financing should start at row 43, got {financing_start}"
     for label, value, tooltip in financing_inputs:
         ws.write(f'B{row}', label, formats['bold'])
         if 'years' in label:
@@ -445,37 +542,42 @@ def create_inputs_sheet(workbook, ws, formats):
         ws.write(f'E{row}', tooltip, formats['tooltip'])
         row += 1
 
-    # WACC formula
+    # Row 48: WACC formula
     ws.write(f'B{row}', 'Calculated WACC', formats['bold'])
     # WACC = (1-D) * Re + D * Rd * (1 - Tc)
-    wacc_formula = f'=(1-C{financing_start})*C{financing_start+3}+C{financing_start}*C{financing_start+1}*(1-C{financing_start+4})'
+    # D=C43, Rd=C44, Re=C46, Tc=C47
+    wacc_formula = '=(1-C43)*C46+C43*C44*(1-C47)'
     ws.write_formula(f'C{row}', wacc_formula, formats['formula'])
     ws.write(f'E{row}', 'Weighted Average Cost of Capital', formats['tooltip'])
-    row += 2
+    assert row == 48, f"WACC should be at row 48, got {row}"
+    row += 2  # Row 49: blank, Row 50
 
     # === BENEFIT STREAMS ===
+    # Row 50: Section header
     ws.merge_range(f'B{row}:E{row}', 'BENEFIT STREAMS (Year 1 Values)', formats['section'])
     row += 1
 
-    # Headers
+    # Row 51: Headers
     ws.write(f'B{row}', 'Benefit Category', formats['header'])
     ws.write(f'C{row}', '$/kW-year', formats['header'])
     ws.write(f'D{row}', 'Escalation %', formats['header'])
     ws.write(f'E{row}', 'Category / Citation', formats['header'])
     row += 1
 
+    # Row 52-59: Benefits
     benefits = [
-        ('Resource Adequacy', 150, 0.02, '[common] CPUC RA Report 2024'),
-        ('Energy Arbitrage', 40, 0.015, '[common] Market Data 2024'),
-        ('Ancillary Services', 15, 0.01, '[common] AS Reports 2024'),
-        ('T&D Deferral', 25, 0.02, '[common] Avoided Cost Calculator'),
-        ('Resilience Value', 50, 0.02, '[common] LBNL ICE Calculator'),
-        ('Renewable Integration', 25, 0.02, '[bess] NREL Grid Studies'),
-        ('GHG Emissions Value', 15, 0.03, '[bess] EPA Social Cost Carbon'),
-        ('Voltage Support', 8, 0.01, '[common] EPRI Distribution'),
+        ('Resource Adequacy', 150, 0.02, '[common] CPUC RA Report 2024'),             # Row 52
+        ('Energy Arbitrage', 40, 0.015, '[common] Market Data 2024'),                 # Row 53
+        ('Ancillary Services', 15, 0.01, '[common] AS Reports 2024'),                 # Row 54
+        ('T&D Deferral', 25, 0.02, '[common] Avoided Cost Calculator'),               # Row 55
+        ('Resilience Value', 50, 0.02, '[common] LBNL ICE Calculator'),               # Row 56
+        ('Renewable Integration', 25, 0.02, '[bess] NREL Grid Studies'),              # Row 57
+        ('GHG Emissions Value', 15, 0.03, '[bess] EPA Social Cost Carbon'),           # Row 58
+        ('Voltage Support', 8, 0.01, '[common] EPRI Distribution'),                   # Row 59
     ]
 
     benefits_start = row
+    assert benefits_start == 52, f"Benefits should start at row 52, got {benefits_start}"
     for name, value, esc, cite in benefits:
         ws.write(f'B{row}', name)
         ws.write(f'C{row}', value, formats['input_currency'])
@@ -483,18 +585,20 @@ def create_inputs_sheet(workbook, ws, formats):
         ws.write(f'E{row}', cite, formats['tooltip'])
         row += 1
 
-    row += 1
-
     # === COST PROJECTIONS ===
+    # Row 60: Section header
     ws.merge_range(f'B{row}:E{row}', 'COST PROJECTIONS (Learning Curve)', formats['section'])
     row += 1
 
+    # Row 61: Learning Rate
     ws.write(f'B{row}', 'Annual Cost Decline Rate', formats['bold'])
     ws.write(f'C{row}', 0.10, formats['input_percent'])
     ws.write(f'E{row}', 'Technology learning rate (10-15% typical)', formats['tooltip'])
     learning_rate_row = row
+    assert learning_rate_row == 61, f"Learning rate should be at row 61, got {learning_rate_row}"
     row += 1
 
+    # Row 62: Base Year
     ws.write(f'B{row}', 'Cost Base Year', formats['bold'])
     ws.write(f'C{row}', 2024, formats['input'])
     ws.write(f'E{row}', 'Reference year for base costs', formats['tooltip'])
@@ -525,13 +629,13 @@ def create_inputs_sheet(workbook, ws, formats):
         'height': 30
     })
 
-    # Store key row numbers for named ranges
-    workbook.define_name('Capacity_MW', f'=Inputs!$C$10')
-    workbook.define_name('Duration_Hours', f'=Inputs!$C$11')
-    workbook.define_name('Energy_MWh', f'=Inputs!$C$12')
-    workbook.define_name('Analysis_Years', f'=Inputs!$C$13')
-    workbook.define_name('Discount_Rate', f'=Inputs!$C$14')
-    workbook.define_name('Learning_Rate', f'=Inputs!$C${learning_rate_row}')
+    # Define named ranges using CellRefs
+    workbook.define_name('Capacity_MW', f'=Inputs!${CellRefs.CAPACITY_MW}')
+    workbook.define_name('Duration_Hours', f'=Inputs!${CellRefs.DURATION_HOURS}')
+    workbook.define_name('Energy_MWh', f'=Inputs!${CellRefs.ENERGY_MWH}')
+    workbook.define_name('Analysis_Years', f'=Inputs!${CellRefs.ANALYSIS_YEARS}')
+    workbook.define_name('Discount_Rate', f'=Inputs!${CellRefs.DISCOUNT_RATE}')
+    workbook.define_name('Learning_Rate', f'=Inputs!${CellRefs.LEARNING_RATE}')
 
     return benefits_start
 
@@ -552,18 +656,19 @@ def create_calculations_sheet(workbook, ws, formats):
     ws.merge_range(f'B{row}:D{row}', 'DERIVED VALUES', formats['section'])
     row += 1
 
+    # Use CellRefs for all formulas
     calcs = [
-        ('Capacity (kW)', '=Inputs!C10*1000', 'Convert MW to kW'),
-        ('Capacity (kWh)', '=Inputs!C12*1000', 'Convert MWh to kWh'),
-        ('Battery CapEx ($)', '=Inputs!C28*C6', 'CapEx/kWh x kWh'),
-        ('Infrastructure ($)', '=(Inputs!C43+Inputs!C44+Inputs!C45)*C5', 'Interconnect+Land+Permit'),
+        ('Capacity (kW)', f'=Inputs!{CellRefs.CAPACITY_MW}*1000', 'Convert MW to kW'),
+        ('Capacity (kWh)', f'=Inputs!{CellRefs.ENERGY_MWH}*1000', 'Convert MWh to kWh'),
+        ('Battery CapEx ($)', f'=Inputs!{CellRefs.CAPEX_PER_KWH}*C6', 'CapEx/kWh x kWh'),
+        ('Infrastructure ($)', f'=(Inputs!{CellRefs.INTERCONNECTION}+Inputs!{CellRefs.LAND}+Inputs!{CellRefs.PERMITTING})*C5', 'Interconnect+Land+Permit'),
         ('Total CapEx ($)', '=C7+C8', 'Battery + Infrastructure'),
-        ('ITC Credit ($)', '=C7*(Inputs!C37+Inputs!C38)', 'ITC on battery only'),
+        ('ITC Credit ($)', f'=C7*(Inputs!{CellRefs.ITC_BASE_RATE}+Inputs!{CellRefs.ITC_ADDERS})', 'ITC on battery only'),
         ('Net Year 0 Cost ($)', '=C9-C10', 'CapEx minus ITC'),
-        ('Annual Fixed O&M ($)', '=Inputs!C29*C5', 'FOM/kW x kW'),
-        ('Annual Energy (MWh)', '=Inputs!C12*Inputs!C23*365*Inputs!C19', 'MWh x cycles/day x 365 x RTE'),
-        ('Annual Charging Cost ($)', '=C13/Inputs!C19*Inputs!C33', 'Energy/RTE x charging cost'),
-        ('Residual Value ($)', '=C9*Inputs!C34', 'CapEx x residual %'),
+        ('Annual Fixed O&M ($)', f'=Inputs!{CellRefs.FOM_PER_KW_YEAR}*C5', 'FOM/kW x kW'),
+        ('Annual Energy (MWh)', f'=Inputs!{CellRefs.ENERGY_MWH}*Inputs!{CellRefs.CYCLES_PER_DAY}*365*Inputs!{CellRefs.ROUND_TRIP_EFFICIENCY}', 'MWh x cycles/day x 365 x RTE'),
+        ('Annual Charging Cost ($)', f'=C13/Inputs!{CellRefs.ROUND_TRIP_EFFICIENCY}*Inputs!{CellRefs.CHARGING_COST}', 'Energy/RTE x charging cost'),
+        ('Residual Value ($)', f'=C9*Inputs!{CellRefs.RESIDUAL_VALUE}', 'CapEx x residual %'),
     ]
 
     for label, formula, desc in calcs:
@@ -598,13 +703,13 @@ def create_cashflows_sheet(workbook, ws, formats):
 
     ws.set_column('A:A', 5)
     ws.set_column('B:B', 8)
-    for col in range(2, 19):  # C through S
+    for col in range(2, 25):  # C through X
         ws.set_column(col, col, 14)
 
     ws.write('B2', 'Annual Cash Flow Projections', formats['title'])
 
     row = 4
-    headers = ['Year', 'CapEx', 'Fixed O&M', 'Var O&M', 'Insurance', 'Prop Tax',
+    headers = ['Year', 'CapEx', 'Fixed O&M', 'Var O&M', 'Charging', 'Insurance', 'Prop Tax',
                'Augment', 'Decommission', 'Total Costs',
                'RA', 'Arbitrage', 'Ancillary', 'T&D', 'Resilience',
                'Renew Int', 'GHG', 'Voltage', 'Total Benefits',
@@ -627,93 +732,108 @@ def create_cashflows_sheet(workbook, ws, formats):
         if year == 0:
             ws.write_formula(row, col, '=Calculations!C11', formats['currency'])
         else:
-            ws.write(row, col, 0, formats['currency'])
+            ws.write_formula(row, col, '=0', formats['currency'])
         col += 1
 
         # Fixed O&M (years 1+)
         if year == 0:
-            ws.write(row, col, 0, formats['currency'])
+            ws.write_formula(row, col, '=0', formats['currency'])
         else:
             ws.write_formula(row, col, '=Calculations!C12', formats['currency'])
         col += 1
 
-        # Variable O&M
-        ws.write(row, col, 0, formats['currency'])
+        # Variable O&M (formula references input cell)
+        if year == 0:
+            ws.write_formula(row, col, '=0', formats['currency'])
+        else:
+            ws.write_formula(row, col, f'=Inputs!${CellRefs.VOM_PER_MWH}*Calculations!$C$13', formats['currency'])
+        col += 1
+
+        # Charging Cost (years 1+)
+        if year == 0:
+            ws.write_formula(row, col, '=0', formats['currency'])
+        else:
+            ws.write_formula(row, col, '=Calculations!C14', formats['currency'])
         col += 1
 
         # Insurance (years 1+)
         if year == 0:
-            ws.write(row, col, 0, formats['currency'])
+            ws.write_formula(row, col, '=0', formats['currency'])
         else:
-            ws.write_formula(row, col, '=Calculations!C9*Inputs!$C$40', formats['currency'])
+            ws.write_formula(row, col, f'=Calculations!C9*Inputs!${CellRefs.INSURANCE_PCT}', formats['currency'])
         col += 1
 
         # Property Tax (declining with depreciation)
         if year == 0:
-            ws.write(row, col, 0, formats['currency'])
+            ws.write_formula(row, col, '=0', formats['currency'])
         else:
-            formula = f'=Calculations!$C$9*(1-{year}/Inputs!$C$13)*Inputs!$C$41'
+            formula = f'=Calculations!$C$9*(1-{year}/Inputs!${CellRefs.ANALYSIS_YEARS})*Inputs!${CellRefs.PROPERTY_TAX_PCT}'
             ws.write_formula(row, col, formula, formats['currency'])
         col += 1
 
-        # Augmentation (year 12) with learning curve
-        if year == 12:
-            ws.write_formula(row, col,
-                '=Inputs!$C$29*Calculations!C6*(1-Inputs!$C$53)^12', formats['currency'])
+        # Augmentation (at augmentation year) with learning curve
+        aug_year_ref = CellRefs.AUGMENTATION_YEAR.replace('C', '')
+        if year == 0:
+            ws.write_formula(row, col, '=0', formats['currency'])
         else:
-            ws.write(row, col, 0, formats['currency'])
+            # Check if this year equals the augmentation year
+            formula = f'=IF(B{row+1}=Inputs!${CellRefs.AUGMENTATION_YEAR},Inputs!${CellRefs.AUGMENTATION_COST}*Calculations!C6*(1-Inputs!${CellRefs.LEARNING_RATE})^B{row+1},0)'
+            ws.write_formula(row, col, formula, formats['currency'])
         col += 1
 
-        # Decommissioning (year 20)
-        if year == 20:
-            ws.write_formula(row, col, '=Inputs!$C$30*Calculations!C5', formats['currency'])
+        # Decommissioning (last year)
+        if year == 0:
+            ws.write_formula(row, col, '=0', formats['currency'])
         else:
-            ws.write(row, col, 0, formats['currency'])
+            formula = f'=IF(B{row+1}=Inputs!${CellRefs.ANALYSIS_YEARS},Inputs!${CellRefs.DECOMMISSIONING}*Calculations!C5-Calculations!C15,0)'
+            ws.write_formula(row, col, formula, formats['currency'])
         col += 1
 
-        # Total Costs
-        ws.write_formula(row, col, f'=SUM(C{row+1}:I{row+1})', formats['formula_currency'])
+        # Total Costs (sum of columns C through J)
+        ws.write_formula(row, col, f'=SUM(C{row+1}:J{row+1})', formats['formula_currency'])
         col += 1
 
         # Benefits (8 streams with escalation)
+        benefit_rows = CellRefs.BENEFIT_ROWS
         if year == 0:
             for _ in range(8):
-                ws.write(row, col, 0, formats['currency'])
+                ws.write_formula(row, col, '=0', formats['currency'])
                 col += 1
         else:
-            benefit_rows = [45, 46, 47, 48, 49, 50, 51, 52]  # Rows in Inputs sheet
             for i, b_row in enumerate(benefit_rows):
                 # Value * Capacity(kW) * (1+escalation)^(year-1) * degradation
-                degradation = f'*(1-Inputs!$C$20)^{year-1}' if i < 5 else ''  # No degradation for last 3
-                formula = f'=Inputs!$C${b_row}*Inputs!$C$10*1000*(1+Inputs!$D${b_row})^{year-1}{degradation}'
+                # Apply degradation to all benefits
+                formula = (f'=Inputs!$C${b_row}*Inputs!${CellRefs.CAPACITY_MW}*1000'
+                          f'*(1+Inputs!$D${b_row})^{year-1}'
+                          f'*(1-Inputs!${CellRefs.ANNUAL_DEGRADATION})^{year-1}')
                 ws.write_formula(row, col, formula, formats['currency'])
                 col += 1
 
-        # Total Benefits
-        ws.write_formula(row, col, f'=SUM(K{row+1}:R{row+1})', formats['formula_currency'])
+        # Total Benefits (sum of columns L through S)
+        ws.write_formula(row, col, f'=SUM(L{row+1}:S{row+1})', formats['formula_currency'])
         col += 1
 
         # Net Cash Flow
-        ws.write_formula(row, col, f'=S{row+1}-J{row+1}', formats['formula_currency'])
+        ws.write_formula(row, col, f'=T{row+1}-K{row+1}', formats['formula_currency'])
         col += 1
 
         # Discount Factor
-        ws.write_formula(row, col, f'=1/(1+Inputs!$C$14)^B{row+1}', formats['percent'])
+        ws.write_formula(row, col, f'=1/(1+Inputs!${CellRefs.DISCOUNT_RATE})^B{row+1}', formats['percent'])
         col += 1
 
         # PV Costs
-        ws.write_formula(row, col, f'=J{row+1}*U{row+1}', formats['currency'])
+        ws.write_formula(row, col, f'=K{row+1}*V{row+1}', formats['currency'])
         col += 1
 
         # PV Benefits
-        ws.write_formula(row, col, f'=S{row+1}*U{row+1}', formats['currency'])
+        ws.write_formula(row, col, f'=T{row+1}*V{row+1}', formats['currency'])
         col += 1
 
         # Cumulative CF
         if year == 0:
-            ws.write_formula(row, col, f'=T{row+1}', formats['currency'])
+            ws.write_formula(row, col, f'=U{row+1}', formats['currency'])
         else:
-            ws.write_formula(row, col, f'=X{row}+T{row+1}', formats['currency'])
+            ws.write_formula(row, col, f'=Y{row}+U{row+1}', formats['currency'])
 
         row += 1
 
@@ -722,10 +842,10 @@ def create_cashflows_sheet(workbook, ws, formats):
     # Totals row
     row += 1
     ws.write(row, 1, 'TOTALS', formats['bold'])
-    ws.write_formula(row, 9, f'=SUM(J{start_row+1}:J{end_row+1})', formats['formula_currency'])  # Total Costs
-    ws.write_formula(row, 18, f'=SUM(S{start_row+1}:S{end_row+1})', formats['formula_currency'])  # Total Benefits
-    ws.write_formula(row, 21, f'=SUM(V{start_row+1}:V{end_row+1})', formats['formula_currency'])  # PV Costs
-    ws.write_formula(row, 22, f'=SUM(W{start_row+1}:W{end_row+1})', formats['formula_currency'])  # PV Benefits
+    ws.write_formula(row, 10, f'=SUM(K{start_row+1}:K{end_row+1})', formats['formula_currency'])  # Total Costs
+    ws.write_formula(row, 19, f'=SUM(T{start_row+1}:T{end_row+1})', formats['formula_currency'])  # Total Benefits
+    ws.write_formula(row, 22, f'=SUM(W{start_row+1}:W{end_row+1})', formats['formula_currency'])  # PV Costs
+    ws.write_formula(row, 23, f'=SUM(X{start_row+1}:X{end_row+1})', formats['formula_currency'])  # PV Benefits
 
     return row  # Return totals row for Results sheet
 
@@ -748,9 +868,9 @@ def create_results_sheet(workbook, ws, formats, cf_totals_row):
     row += 1
 
     summary = [
-        ('Project', '=Inputs!C7'),
-        ('Location', '=Inputs!C9'),
-        ('Capacity', '=Inputs!C10&" MW / "&Inputs!C12&" MWh"'),
+        ('Project', f'=Inputs!{CellRefs.PROJECT_NAME}'),
+        ('Location', f'=Inputs!{CellRefs.LOCATION}'),
+        ('Capacity', f'=Inputs!{CellRefs.CAPACITY_MW}&" MW / "&Inputs!{CellRefs.ENERGY_MWH}&" MWh"'),
         ('Total Investment', '=Calculations!C9'),
     ]
 
@@ -770,17 +890,17 @@ def create_results_sheet(workbook, ws, formats, cf_totals_row):
 
     bcr_row = row
     metrics = [
-        ('Benefit-Cost Ratio (BCR)', f'=Cash_Flows!W{cf_totals_row+1}/Cash_Flows!V{cf_totals_row+1}',
+        ('Benefit-Cost Ratio (BCR)', f'=Cash_Flows!X{cf_totals_row+1}/Cash_Flows!W{cf_totals_row+1}',
          '0.00', 'BCR >= 1.0 indicates benefits exceed costs'),
-        ('Net Present Value (NPV)', f'=Cash_Flows!W{cf_totals_row+1}-Cash_Flows!V{cf_totals_row+1}',
+        ('Net Present Value (NPV)', f'=Cash_Flows!X{cf_totals_row+1}-Cash_Flows!W{cf_totals_row+1}',
          '$#,##0', 'Positive NPV indicates value creation'),
-        ('Internal Rate of Return (IRR)', '=IRR(Cash_Flows!T5:T25)',
+        ('Internal Rate of Return (IRR)', '=IRR(Cash_Flows!U5:U25)',
          '0.0%', 'Rate where NPV = 0'),
-        ('Simple Payback (years)', '=MATCH(TRUE,INDEX(Cash_Flows!X5:X25>0,0),0)-1',
+        ('Simple Payback (years)', '=MATCH(TRUE,INDEX(Cash_Flows!Y5:Y25>0,0),0)-1',
          '0.0', 'Year when cumulative CF turns positive'),
-        ('PV of Total Costs', f'=Cash_Flows!V{cf_totals_row+1}',
+        ('PV of Total Costs', f'=Cash_Flows!W{cf_totals_row+1}',
          '$#,##0,,"M"', 'Present value of all costs'),
-        ('PV of Total Benefits', f'=Cash_Flows!W{cf_totals_row+1}',
+        ('PV of Total Benefits', f'=Cash_Flows!X{cf_totals_row+1}',
          '$#,##0,,"M"', 'Present value of all benefits'),
     ]
 
@@ -826,7 +946,7 @@ def create_results_sheet(workbook, ws, formats, cf_totals_row):
 
     ws.write(f'B{row}', 'LCOS ($/MWh)', formats['bold'])
     ws.write_formula(f'C{row}',
-        f'=Cash_Flows!V{cf_totals_row+1}/(Calculations!C13*NPV(Inputs!C14,Cash_Flows!U5:U25))',
+        f'=Cash_Flows!W{cf_totals_row+1}/(Calculations!C13*NPV(Inputs!{CellRefs.DISCOUNT_RATE},Cash_Flows!V5:V25))',
         formats['result_currency'])
     ws.write(f'E{row}', 'Levelized cost per MWh discharged', formats['tooltip'])
     row += 2
@@ -837,7 +957,7 @@ def create_results_sheet(workbook, ws, formats, cf_totals_row):
 
     ws.write(f'B{row}', 'Breakeven CapEx ($/kWh)', formats['bold'])
     ws.write_formula(f'C{row}',
-        f'=(Cash_Flows!W{cf_totals_row+1}-(Cash_Flows!V{cf_totals_row+1}-Calculations!C11))/(Inputs!C12*1000)',
+        f'=(Cash_Flows!X{cf_totals_row+1}-(Cash_Flows!W{cf_totals_row+1}-Calculations!C11))/(Inputs!{CellRefs.ENERGY_MWH}*1000)',
         formats['result_currency'])
     ws.write(f'E{row}', 'Maximum CapEx for BCR = 1.0', formats['tooltip'])
 
@@ -881,9 +1001,8 @@ def create_sensitivity_sheet(workbook, ws, formats, cf_totals_row):
         for i, ben_mult in enumerate(benefit_mults):
             col_letter = chr(ord('C') + i)
             # NPV = PV_Benefits * benefit_mult - PV_Costs * (capex/base_capex)
-            # Simplified: adjust base NPV calculation
-            formula = (f'=(Cash_Flows!W{cf_totals_row+1}*{ben_mult})-'
-                      f'(Cash_Flows!V{cf_totals_row+1}*(1+({capex}-Inputs!$C$28)/Inputs!$C$28))')
+            formula = (f'=(Cash_Flows!X{cf_totals_row+1}*{ben_mult})-'
+                      f'(Cash_Flows!W{cf_totals_row+1}*(1+({capex}-Inputs!${CellRefs.CAPEX_PER_KWH})/Inputs!${CellRefs.CAPEX_PER_KWH}))')
             ws.write_formula(f'{col_letter}{row}', formula, formats['currency'])
         row += 1
 
@@ -907,8 +1026,8 @@ def create_sensitivity_sheet(workbook, ws, formats, cf_totals_row):
         for i, ben_mult in enumerate(benefit_mults):
             col_letter = chr(ord('C') + i)
             # BCR = (PV_Benefits * benefit_mult) / (PV_Costs * capex_ratio)
-            formula = (f'=(Cash_Flows!W{cf_totals_row+1}*{ben_mult})/'
-                      f'(Cash_Flows!V{cf_totals_row+1}*(1+({capex}-Inputs!$C$28)/Inputs!$C$28))')
+            formula = (f'=(Cash_Flows!X{cf_totals_row+1}*{ben_mult})/'
+                      f'(Cash_Flows!W{cf_totals_row+1}*(1+({capex}-Inputs!${CellRefs.CAPEX_PER_KWH})/Inputs!${CellRefs.CAPEX_PER_KWH}))')
             cell = f'{col_letter}{row}'
             ws.write_formula(cell, formula, formats['percent'])
         row += 1
@@ -940,18 +1059,18 @@ def create_sensitivity_sheet(workbook, ws, formats, cf_totals_row):
     ws.write(f'E{row}', '+20% NPV', formats['header'])
     row += 1
 
-    # Key sensitivities - all use formulas referencing inputs
+    # Key sensitivities
     sensitivities = [
-        ('CapEx ($/kWh)', 'Inputs!C28', 'Calculations!C9',
-         '=Results!C12-(Calculations!C9*0.2/(1+Inputs!C14)^0)',  # -20% capex => +NPV
-         '=Results!C12+(Calculations!C9*0.2/(1+Inputs!C14)^0)'), # +20% capex => -NPV
-        ('Total Benefits', f'Cash_Flows!W{cf_totals_row+1}', 'per year',
-         f'=Results!C12-Cash_Flows!W{cf_totals_row+1}*0.2',
-         f'=Results!C12+Cash_Flows!W{cf_totals_row+1}*0.2'),
-        ('Discount Rate', 'Inputs!C14', '7%',
+        ('CapEx ($/kWh)', f'Inputs!{CellRefs.CAPEX_PER_KWH}', 'Calculations!C9',
+         '=Results!C12-(Calculations!C9*0.2/(1+Inputs!C16)^0)',  # -20% capex => +NPV
+         '=Results!C12+(Calculations!C9*0.2/(1+Inputs!C16)^0)'), # +20% capex => -NPV
+        ('Total Benefits', f'Cash_Flows!X{cf_totals_row+1}', 'per year',
+         f'=Results!C12-Cash_Flows!X{cf_totals_row+1}*0.2',
+         f'=Results!C12+Cash_Flows!X{cf_totals_row+1}*0.2'),
+        ('Discount Rate', f'Inputs!{CellRefs.DISCOUNT_RATE}', '7%',
          '=Results!C12*1.15',  # Lower discount => higher NPV
          '=Results!C12*0.85'), # Higher discount => lower NPV
-        ('Cycles per Day', 'Inputs!C23', '1.0',
+        ('Cycles per Day', f'Inputs!{CellRefs.CYCLES_PER_DAY}', '1.0',
          '=Results!C12*0.85',  # Fewer cycles => less revenue
          '=Results!C12*1.15'), # More cycles => more revenue
     ]
@@ -1121,11 +1240,23 @@ def create_vba_code_sheet(workbook, ws, formats):
     ws.merge_range(f'B{row}:C{row}', 'COMPLETE VBA CODE - COPY ALL BELOW', formats['section'])
     row += 1
 
-    vba_code = '''Option Explicit
+    # Generate VBA code with correct cell references from CellRefs
+    vba_code = f'''Option Explicit
 
 '=================================================================
 ' BESS ANALYZER VBA MACROS
 ' Copy this entire module into your VBA project
+'
+' CELL REFERENCE MAP (Inputs sheet):
+' - Selected Library: {CellRefs.SELECTED_LIBRARY}
+' - Capacity MW: {CellRefs.CAPACITY_MW}, Duration: {CellRefs.DURATION_HOURS}
+' - Technology: {CellRefs.CHEMISTRY} to {CellRefs.CYCLES_PER_DAY}
+' - Costs: {CellRefs.CAPEX_PER_KWH} to {CellRefs.RESIDUAL_VALUE}
+' - ITC: {CellRefs.ITC_BASE_RATE}, {CellRefs.ITC_ADDERS}
+' - Infrastructure: {CellRefs.INTERCONNECTION} to {CellRefs.PROPERTY_TAX_PCT}
+' - Financing: {CellRefs.DEBT_PERCENT} to {CellRefs.TAX_RATE}
+' - Benefits: C52:D59 (8 rows)
+' - Learning Rate: {CellRefs.LEARNING_RATE}
 '=================================================================
 
 Sub LoadNRELLibrary()
@@ -1134,52 +1265,55 @@ Sub LoadNRELLibrary()
     '-----------------------------------------------------------
     With ThisWorkbook.Sheets("Inputs")
         ' Library name
-        .Range("C6").Value = "NREL ATB 2024 - Moderate"
+        .Range("{CellRefs.SELECTED_LIBRARY}").Value = "NREL ATB 2024 - Moderate"
 
         ' Technology Specifications
-        .Range("C18").Value = "LFP"          ' Chemistry
-        .Range("C19").Value = 0.85           ' Round-Trip Efficiency
-        .Range("C20").Value = 0.025          ' Annual Degradation
-        .Range("C21").Value = 6000           ' Cycle Life
-        .Range("C22").Value = 12             ' Augmentation Year
-        .Range("C23").Value = 1              ' Cycles per Day
+        .Range("{CellRefs.CHEMISTRY}").Value = "LFP"
+        .Range("{CellRefs.ROUND_TRIP_EFFICIENCY}").Value = 0.85
+        .Range("{CellRefs.ANNUAL_DEGRADATION}").Value = 0.025
+        .Range("{CellRefs.CYCLE_LIFE}").Value = 6000
+        .Range("{CellRefs.AUGMENTATION_YEAR}").Value = 12
+        .Range("{CellRefs.CYCLES_PER_DAY}").Value = 1
 
         ' Cost Inputs
-        .Range("C28").Value = 160            ' CapEx ($/kWh)
-        .Range("C29").Value = 25             ' Fixed O&M ($/kW-year)
-        .Range("C30").Value = 0              ' Variable O&M ($/MWh)
-        .Range("C31").Value = 55             ' Augmentation Cost ($/kWh)
-        .Range("C32").Value = 10             ' Decommissioning ($/kW)
-        .Range("C33").Value = 30             ' Charging Cost ($/MWh)
-        .Range("C34").Value = 0.1            ' Residual Value (%)
+        .Range("{CellRefs.CAPEX_PER_KWH}").Value = 160
+        .Range("{CellRefs.FOM_PER_KW_YEAR}").Value = 25
+        .Range("{CellRefs.VOM_PER_MWH}").Value = 0
+        .Range("{CellRefs.AUGMENTATION_COST}").Value = 55
+        .Range("{CellRefs.DECOMMISSIONING}").Value = 10
+        .Range("{CellRefs.CHARGING_COST}").Value = 30
+        .Range("{CellRefs.RESIDUAL_VALUE}").Value = 0.1
 
         ' Tax Credits
-        .Range("C37").Value = 0.3            ' ITC Base (30%)
-        .Range("C38").Value = 0              ' ITC Adders
+        .Range("{CellRefs.ITC_BASE_RATE}").Value = 0.3
+        .Range("{CellRefs.ITC_ADDERS}").Value = 0
 
         ' Infrastructure Costs
-        .Range("C43").Value = 100            ' Interconnection ($/kW)
-        .Range("C44").Value = 10             ' Land ($/kW)
-        .Range("C45").Value = 15             ' Permitting ($/kW)
-        .Range("C46").Value = 0.005          ' Insurance (% of CapEx)
-        .Range("C47").Value = 0.01           ' Property Tax (%)
+        .Range("{CellRefs.INTERCONNECTION}").Value = 100
+        .Range("{CellRefs.LAND}").Value = 10
+        .Range("{CellRefs.PERMITTING}").Value = 15
+        .Range("{CellRefs.INSURANCE_PCT}").Value = 0.005
+        .Range("{CellRefs.PROPERTY_TAX_PCT}").Value = 0.01
 
         ' Financing Structure
-        .Range("C51").Value = 0.6            ' Debt Percentage
-        .Range("C52").Value = 0.045          ' Interest Rate
-        .Range("C53").Value = 15             ' Loan Term (years)
-        .Range("C54").Value = 0.1            ' Cost of Equity
-        .Range("C55").Value = 0.21           ' Tax Rate
+        .Range("{CellRefs.DEBT_PERCENT}").Value = 0.6
+        .Range("{CellRefs.INTEREST_RATE}").Value = 0.045
+        .Range("{CellRefs.LOAN_TERM}").Value = 15
+        .Range("{CellRefs.COST_OF_EQUITY}").Value = 0.1
+        .Range("{CellRefs.TAX_RATE}").Value = 0.21
 
         ' Benefits ($/kW-year and escalation)
-        .Range("C59").Value = 150: .Range("D59").Value = 0.02   ' Resource Adequacy
-        .Range("C60").Value = 40: .Range("D60").Value = 0.015   ' Energy Arbitrage
-        .Range("C61").Value = 15: .Range("D61").Value = 0.01    ' Ancillary Services
-        .Range("C62").Value = 25: .Range("D62").Value = 0.02    ' T&D Deferral
-        .Range("C63").Value = 50: .Range("D63").Value = 0.02    ' Resilience Value
-        .Range("C64").Value = 25: .Range("D64").Value = 0.02    ' Renewable Integration
-        .Range("C65").Value = 15: .Range("D65").Value = 0.03    ' GHG Emissions Value
-        .Range("C66").Value = 8: .Range("D66").Value = 0.01     ' Voltage Support
+        .Range("C52").Value = 150: .Range("D52").Value = 0.02   ' Resource Adequacy
+        .Range("C53").Value = 40: .Range("D53").Value = 0.015   ' Energy Arbitrage
+        .Range("C54").Value = 15: .Range("D54").Value = 0.01    ' Ancillary Services
+        .Range("C55").Value = 25: .Range("D55").Value = 0.02    ' T&D Deferral
+        .Range("C56").Value = 50: .Range("D56").Value = 0.02    ' Resilience Value
+        .Range("C57").Value = 25: .Range("D57").Value = 0.02    ' Renewable Integration
+        .Range("C58").Value = 15: .Range("D58").Value = 0.03    ' GHG Emissions Value
+        .Range("C59").Value = 8: .Range("D59").Value = 0.01     ' Voltage Support
+
+        ' Learning Curve
+        .Range("{CellRefs.LEARNING_RATE}").Value = 0.12
     End With
 
     Application.Calculate
@@ -1192,52 +1326,55 @@ Sub LoadLazardLibrary()
     ' Loads Lazard LCOS v10.0 2025 assumptions
     '-----------------------------------------------------------
     With ThisWorkbook.Sheets("Inputs")
-        .Range("C6").Value = "Lazard LCOS 2025"
+        .Range("{CellRefs.SELECTED_LIBRARY}").Value = "Lazard LCOS 2025"
 
         ' Technology
-        .Range("C18").Value = "LFP"
-        .Range("C19").Value = 0.86
-        .Range("C20").Value = 0.02
-        .Range("C21").Value = 6500
-        .Range("C22").Value = 12
-        .Range("C23").Value = 1
+        .Range("{CellRefs.CHEMISTRY}").Value = "LFP"
+        .Range("{CellRefs.ROUND_TRIP_EFFICIENCY}").Value = 0.86
+        .Range("{CellRefs.ANNUAL_DEGRADATION}").Value = 0.02
+        .Range("{CellRefs.CYCLE_LIFE}").Value = 6500
+        .Range("{CellRefs.AUGMENTATION_YEAR}").Value = 12
+        .Range("{CellRefs.CYCLES_PER_DAY}").Value = 1
 
         ' Costs
-        .Range("C28").Value = 145
-        .Range("C29").Value = 22
-        .Range("C30").Value = 0.5
-        .Range("C31").Value = 50
-        .Range("C32").Value = 8
-        .Range("C33").Value = 35
-        .Range("C34").Value = 0.1
+        .Range("{CellRefs.CAPEX_PER_KWH}").Value = 145
+        .Range("{CellRefs.FOM_PER_KW_YEAR}").Value = 22
+        .Range("{CellRefs.VOM_PER_MWH}").Value = 0.5
+        .Range("{CellRefs.AUGMENTATION_COST}").Value = 50
+        .Range("{CellRefs.DECOMMISSIONING}").Value = 8
+        .Range("{CellRefs.CHARGING_COST}").Value = 35
+        .Range("{CellRefs.RESIDUAL_VALUE}").Value = 0.1
 
         ' Tax Credits
-        .Range("C37").Value = 0.3
-        .Range("C38").Value = 0
+        .Range("{CellRefs.ITC_BASE_RATE}").Value = 0.3
+        .Range("{CellRefs.ITC_ADDERS}").Value = 0
 
         ' Infrastructure
-        .Range("C43").Value = 90
-        .Range("C44").Value = 8
-        .Range("C45").Value = 12
-        .Range("C46").Value = 0.005
-        .Range("C47").Value = 0.01
+        .Range("{CellRefs.INTERCONNECTION}").Value = 90
+        .Range("{CellRefs.LAND}").Value = 8
+        .Range("{CellRefs.PERMITTING}").Value = 12
+        .Range("{CellRefs.INSURANCE_PCT}").Value = 0.005
+        .Range("{CellRefs.PROPERTY_TAX_PCT}").Value = 0.01
 
         ' Financing
-        .Range("C51").Value = 0.55
-        .Range("C52").Value = 0.05
-        .Range("C53").Value = 15
-        .Range("C54").Value = 0.12
-        .Range("C55").Value = 0.21
+        .Range("{CellRefs.DEBT_PERCENT}").Value = 0.55
+        .Range("{CellRefs.INTEREST_RATE}").Value = 0.05
+        .Range("{CellRefs.LOAN_TERM}").Value = 15
+        .Range("{CellRefs.COST_OF_EQUITY}").Value = 0.12
+        .Range("{CellRefs.TAX_RATE}").Value = 0.21
 
         ' Benefits
-        .Range("C59").Value = 140: .Range("D59").Value = 0.02
-        .Range("C60").Value = 45: .Range("D60").Value = 0.02
-        .Range("C61").Value = 12: .Range("D61").Value = 0.01
-        .Range("C62").Value = 20: .Range("D62").Value = 0.015
-        .Range("C63").Value = 45: .Range("D63").Value = 0.02
-        .Range("C64").Value = 20: .Range("D64").Value = 0.02
-        .Range("C65").Value = 12: .Range("D65").Value = 0.03
-        .Range("C66").Value = 6: .Range("D66").Value = 0.01
+        .Range("C52").Value = 140: .Range("D52").Value = 0.02
+        .Range("C53").Value = 45: .Range("D53").Value = 0.02
+        .Range("C54").Value = 12: .Range("D54").Value = 0.01
+        .Range("C55").Value = 20: .Range("D55").Value = 0.015
+        .Range("C56").Value = 45: .Range("D56").Value = 0.02
+        .Range("C57").Value = 20: .Range("D57").Value = 0.02
+        .Range("C58").Value = 12: .Range("D58").Value = 0.03
+        .Range("C59").Value = 6: .Range("D59").Value = 0.01
+
+        ' Learning Curve
+        .Range("{CellRefs.LEARNING_RATE}").Value = 0.1
     End With
 
     Application.Calculate
@@ -1251,52 +1388,55 @@ Sub LoadCPUCLibrary()
     ' Includes 10% ITC Energy Community Adder
     '-----------------------------------------------------------
     With ThisWorkbook.Sheets("Inputs")
-        .Range("C6").Value = "CPUC California 2024"
+        .Range("{CellRefs.SELECTED_LIBRARY}").Value = "CPUC California 2024"
 
         ' Technology
-        .Range("C18").Value = "LFP"
-        .Range("C19").Value = 0.85
-        .Range("C20").Value = 0.025
-        .Range("C21").Value = 6000
-        .Range("C22").Value = 12
-        .Range("C23").Value = 1
+        .Range("{CellRefs.CHEMISTRY}").Value = "LFP"
+        .Range("{CellRefs.ROUND_TRIP_EFFICIENCY}").Value = 0.85
+        .Range("{CellRefs.ANNUAL_DEGRADATION}").Value = 0.025
+        .Range("{CellRefs.CYCLE_LIFE}").Value = 6000
+        .Range("{CellRefs.AUGMENTATION_YEAR}").Value = 12
+        .Range("{CellRefs.CYCLES_PER_DAY}").Value = 1
 
         ' Costs
-        .Range("C28").Value = 155
-        .Range("C29").Value = 26
-        .Range("C30").Value = 0
-        .Range("C31").Value = 52
-        .Range("C32").Value = 12
-        .Range("C33").Value = 25
-        .Range("C34").Value = 0.1
+        .Range("{CellRefs.CAPEX_PER_KWH}").Value = 155
+        .Range("{CellRefs.FOM_PER_KW_YEAR}").Value = 26
+        .Range("{CellRefs.VOM_PER_MWH}").Value = 0
+        .Range("{CellRefs.AUGMENTATION_COST}").Value = 52
+        .Range("{CellRefs.DECOMMISSIONING}").Value = 12
+        .Range("{CellRefs.CHARGING_COST}").Value = 25
+        .Range("{CellRefs.RESIDUAL_VALUE}").Value = 0.1
 
         ' Tax Credits (includes Energy Community adder)
-        .Range("C37").Value = 0.3
-        .Range("C38").Value = 0.1            ' 10% Energy Community Adder
+        .Range("{CellRefs.ITC_BASE_RATE}").Value = 0.3
+        .Range("{CellRefs.ITC_ADDERS}").Value = 0.1            ' 10% Energy Community Adder
 
         ' Infrastructure (California-specific higher costs)
-        .Range("C43").Value = 120
-        .Range("C44").Value = 15
-        .Range("C45").Value = 20
-        .Range("C46").Value = 0.005
-        .Range("C47").Value = 0.0105         ' CA property tax rate
+        .Range("{CellRefs.INTERCONNECTION}").Value = 120
+        .Range("{CellRefs.LAND}").Value = 15
+        .Range("{CellRefs.PERMITTING}").Value = 20
+        .Range("{CellRefs.INSURANCE_PCT}").Value = 0.005
+        .Range("{CellRefs.PROPERTY_TAX_PCT}").Value = 0.0105   ' CA property tax rate
 
         ' Financing (IOU-style favorable terms)
-        .Range("C51").Value = 0.65
-        .Range("C52").Value = 0.04
-        .Range("C53").Value = 20
-        .Range("C54").Value = 0.095
-        .Range("C55").Value = 0.21
+        .Range("{CellRefs.DEBT_PERCENT}").Value = 0.65
+        .Range("{CellRefs.INTEREST_RATE}").Value = 0.04
+        .Range("{CellRefs.LOAN_TERM}").Value = 20
+        .Range("{CellRefs.COST_OF_EQUITY}").Value = 0.095
+        .Range("{CellRefs.TAX_RATE}").Value = 0.21
 
         ' Benefits (California premium values)
-        .Range("C59").Value = 180: .Range("D59").Value = 0.025  ' RA premium in CA
-        .Range("C60").Value = 35: .Range("D60").Value = 0.02
-        .Range("C61").Value = 10: .Range("D61").Value = 0.01
-        .Range("C62").Value = 25: .Range("D62").Value = 0.015
-        .Range("C63").Value = 60: .Range("D63").Value = 0.02   ' PSPS resilience value
-        .Range("C64").Value = 30: .Range("D64").Value = 0.025
-        .Range("C65").Value = 20: .Range("D65").Value = 0.03
-        .Range("C66").Value = 10: .Range("D66").Value = 0.01
+        .Range("C52").Value = 180: .Range("D52").Value = 0.025  ' RA premium in CA
+        .Range("C53").Value = 35: .Range("D53").Value = 0.02
+        .Range("C54").Value = 10: .Range("D54").Value = 0.01
+        .Range("C55").Value = 25: .Range("D55").Value = 0.015
+        .Range("C56").Value = 60: .Range("D56").Value = 0.02   ' PSPS resilience value
+        .Range("C57").Value = 30: .Range("D57").Value = 0.025
+        .Range("C58").Value = 20: .Range("D58").Value = 0.03
+        .Range("C59").Value = 10: .Range("D59").Value = 0.01
+
+        ' Learning Curve
+        .Range("{CellRefs.LEARNING_RATE}").Value = 0.11
     End With
 
     Application.Calculate
@@ -1342,16 +1482,16 @@ Sub GenerateReport()
     row = row + 1
 
     wsReport.Cells(row, 2).Value = "Project:"
-    wsReport.Cells(row, 3).Value = wsInputs.Range("C7").Value
+    wsReport.Cells(row, 3).Value = wsInputs.Range("{CellRefs.PROJECT_NAME}").Value
     row = row + 1
     wsReport.Cells(row, 2).Value = "Location:"
-    wsReport.Cells(row, 3).Value = wsInputs.Range("C9").Value
+    wsReport.Cells(row, 3).Value = wsInputs.Range("{CellRefs.LOCATION}").Value
     row = row + 1
     wsReport.Cells(row, 2).Value = "Capacity:"
-    wsReport.Cells(row, 3).Value = wsInputs.Range("C10").Value & " MW / " & wsInputs.Range("C12").Value & " MWh"
+    wsReport.Cells(row, 3).Value = wsInputs.Range("{CellRefs.CAPACITY_MW}").Value & " MW / " & wsInputs.Range("{CellRefs.ENERGY_MWH}").Value & " MWh"
     row = row + 1
     wsReport.Cells(row, 2).Value = "Assumptions:"
-    wsReport.Cells(row, 3).Value = wsInputs.Range("C6").Value
+    wsReport.Cells(row, 3).Value = wsInputs.Range("{CellRefs.SELECTED_LIBRARY}").Value
     row = row + 2
 
     ' Key Metrics
@@ -1375,10 +1515,6 @@ Sub GenerateReport()
     wsReport.Cells(row, 2).Value = "Payback Period:"
     wsReport.Cells(row, 3).Value = wsResults.Range("C14").Value
     wsReport.Cells(row, 3).NumberFormat = "0.0 "" years"""
-    row = row + 1
-    wsReport.Cells(row, 2).Value = "LCOS:"
-    wsReport.Cells(row, 3).Value = wsResults.Range("C15").Value
-    wsReport.Cells(row, 3).NumberFormat = "$#,##0 ""/MWh"""
     row = row + 2
 
     ' Recommendation
@@ -1489,6 +1625,38 @@ End Sub'''
 
     row += 2
 
+    # Cell Reference Map section
+    ws.merge_range(f'B{row}:C{row}', 'CELL REFERENCE MAP (Inputs Sheet)', formats['section'])
+    row += 1
+
+    cell_refs = [
+        ("Selected Library", CellRefs.SELECTED_LIBRARY),
+        ("Capacity (MW)", CellRefs.CAPACITY_MW),
+        ("Duration (hours)", CellRefs.DURATION_HOURS),
+        ("Energy Capacity (MWh)", CellRefs.ENERGY_MWH),
+        ("Analysis Period", CellRefs.ANALYSIS_YEARS),
+        ("Discount Rate", CellRefs.DISCOUNT_RATE),
+        ("Chemistry", CellRefs.CHEMISTRY),
+        ("Round-Trip Efficiency", CellRefs.ROUND_TRIP_EFFICIENCY),
+        ("Cycles per Day", CellRefs.CYCLES_PER_DAY),
+        ("CapEx ($/kWh)", CellRefs.CAPEX_PER_KWH),
+        ("Fixed O&M", CellRefs.FOM_PER_KW_YEAR),
+        ("ITC Base Rate", CellRefs.ITC_BASE_RATE),
+        ("ITC Adders", CellRefs.ITC_ADDERS),
+        ("Interconnection", CellRefs.INTERCONNECTION),
+        ("Debt Percentage", CellRefs.DEBT_PERCENT),
+        ("Benefits Start Row", "C52"),
+        ("Benefits End Row", "C59"),
+        ("Learning Rate", CellRefs.LEARNING_RATE),
+    ]
+
+    for name, cell in cell_refs:
+        ws.write(f'B{row}', name)
+        ws.write(f'C{row}', cell, formats['bold'])
+        row += 1
+
+    row += 2
+
     # Troubleshooting section
     ws.merge_range(f'B{row}:C{row}', 'TROUBLESHOOTING', formats['section'])
     row += 1
@@ -1496,7 +1664,7 @@ End Sub'''
     troubleshooting = [
         "If buttons don't work: Make sure you saved as .xlsm and macros are enabled",
         "If macros are disabled: Go to File > Options > Trust Center > Trust Center Settings > Macro Settings",
-        "If cell references are wrong: The VBA code uses specific cell addresses - check the Inputs sheet layout",
+        "If cell references are wrong: Check the Cell Reference Map above",
         "To edit macros: Press Alt+F11 to open VBA Editor, then modify the code in the Module",
         "To assign macros to buttons: Right-click button > Assign Macro > Select from list",
     ]
@@ -1612,282 +1780,6 @@ def create_library_data_sheet(workbook, ws, formats):
         row += 1
 
 
-def get_vba_code():
-    """Return VBA code for the workbook macros."""
-    return '''
-Attribute VB_Name = "BESSAnalyzer"
-Option Explicit
-
-Sub LoadNRELLibrary()
-    With ThisWorkbook.Sheets("Inputs")
-        .Range("C6").Value = "NREL ATB 2024 - Moderate"
-        ' Technology
-        .Range("C18").Value = "LFP"
-        .Range("C19").Value = 0.85
-        .Range("C20").Value = 0.025
-        .Range("C21").Value = 6000
-        .Range("C22").Value = 12
-        ' Costs
-        .Range("C26").Value = 160
-        .Range("C27").Value = 25
-        .Range("C28").Value = 0
-        .Range("C29").Value = 55
-        .Range("C30").Value = 10
-        ' Tax Credits
-        .Range("C33").Value = 0.3
-        .Range("C34").Value = 0
-        ' Infrastructure
-        .Range("C37").Value = 100
-        .Range("C38").Value = 10
-        .Range("C39").Value = 15
-        .Range("C40").Value = 0.005
-        .Range("C41").Value = 0.01
-        ' Benefits
-        .Range("C45").Value = 150: .Range("D45").Value = 0.02
-        .Range("C46").Value = 40: .Range("D46").Value = 0.015
-        .Range("C47").Value = 15: .Range("D47").Value = 0.01
-        .Range("C48").Value = 25: .Range("D48").Value = 0.02
-        .Range("C49").Value = 50: .Range("D49").Value = 0.02
-        .Range("C50").Value = 25: .Range("D50").Value = 0.02
-        .Range("C51").Value = 15: .Range("D51").Value = 0.03
-        .Range("C52").Value = 8: .Range("D52").Value = 0.01
-        ' Learning curve
-        .Range("C53").Value = 0.12
-        .Range("C54").Value = 2024
-    End With
-    Application.Calculate
-    MsgBox "NREL ATB 2024 assumptions loaded.", vbInformation
-End Sub
-
-Sub LoadLazardLibrary()
-    With ThisWorkbook.Sheets("Inputs")
-        .Range("C6").Value = "Lazard LCOS 2025"
-        .Range("C18").Value = "LFP"
-        .Range("C19").Value = 0.86
-        .Range("C20").Value = 0.02
-        .Range("C21").Value = 6500
-        .Range("C22").Value = 12
-        .Range("C26").Value = 145
-        .Range("C27").Value = 22
-        .Range("C28").Value = 0.5
-        .Range("C29").Value = 50
-        .Range("C30").Value = 8
-        .Range("C33").Value = 0.3
-        .Range("C34").Value = 0
-        .Range("C37").Value = 90
-        .Range("C38").Value = 8
-        .Range("C39").Value = 12
-        .Range("C40").Value = 0.005
-        .Range("C41").Value = 0.01
-        .Range("C45").Value = 140: .Range("D45").Value = 0.02
-        .Range("C46").Value = 45: .Range("D46").Value = 0.02
-        .Range("C47").Value = 12: .Range("D47").Value = 0.01
-        .Range("C48").Value = 20: .Range("D48").Value = 0.015
-        .Range("C49").Value = 45: .Range("D49").Value = 0.02
-        .Range("C50").Value = 20: .Range("D50").Value = 0.02
-        .Range("C51").Value = 12: .Range("D51").Value = 0.03
-        .Range("C52").Value = 6: .Range("D52").Value = 0.01
-        .Range("C53").Value = 0.1
-        .Range("C54").Value = 2025
-    End With
-    Application.Calculate
-    MsgBox "Lazard LCOS 2025 assumptions loaded.", vbInformation
-End Sub
-
-Sub LoadCPUCLibrary()
-    With ThisWorkbook.Sheets("Inputs")
-        .Range("C6").Value = "CPUC California 2024"
-        .Range("C18").Value = "LFP"
-        .Range("C19").Value = 0.85
-        .Range("C20").Value = 0.025
-        .Range("C21").Value = 6000
-        .Range("C22").Value = 12
-        .Range("C26").Value = 155
-        .Range("C27").Value = 26
-        .Range("C28").Value = 0
-        .Range("C29").Value = 52
-        .Range("C30").Value = 12
-        .Range("C33").Value = 0.3
-        .Range("C34").Value = 0.1
-        .Range("C37").Value = 120
-        .Range("C38").Value = 15
-        .Range("C39").Value = 20
-        .Range("C40").Value = 0.005
-        .Range("C41").Value = 0.0105
-        .Range("C45").Value = 180: .Range("D45").Value = 0.025
-        .Range("C46").Value = 35: .Range("D46").Value = 0.02
-        .Range("C47").Value = 10: .Range("D47").Value = 0.01
-        .Range("C48").Value = 25: .Range("D48").Value = 0.015
-        .Range("C49").Value = 60: .Range("D49").Value = 0.02
-        .Range("C50").Value = 30: .Range("D50").Value = 0.025
-        .Range("C51").Value = 20: .Range("D51").Value = 0.03
-        .Range("C52").Value = 10: .Range("D52").Value = 0.01
-        .Range("C53").Value = 0.11
-        .Range("C54").Value = 2024
-    End With
-    Application.Calculate
-    MsgBox "CPUC California 2024 assumptions loaded." & vbCrLf & _
-           "Note: Includes 10% ITC energy community adder.", vbInformation
-End Sub
-
-Sub GenerateReport()
-    Dim wsReport As Worksheet
-    Dim wsResults As Worksheet
-    Dim wsInputs As Worksheet
-    Dim row As Long
-
-    Set wsResults = ThisWorkbook.Sheets("Results")
-    Set wsInputs = ThisWorkbook.Sheets("Inputs")
-
-    On Error Resume Next
-    Application.DisplayAlerts = False
-    ThisWorkbook.Sheets("Report").Delete
-    Application.DisplayAlerts = True
-    On Error GoTo 0
-
-    Set wsReport = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
-    wsReport.Name = "Report"
-
-    row = 2
-    wsReport.Cells(row, 2).Value = "BESS ECONOMIC ANALYSIS REPORT"
-    wsReport.Cells(row, 2).Font.Bold = True
-    wsReport.Cells(row, 2).Font.Size = 18
-    wsReport.Range("B" & row & ":F" & row).Merge
-    row = row + 2
-
-    wsReport.Cells(row, 2).Value = "PROJECT SUMMARY"
-    wsReport.Cells(row, 2).Font.Bold = True
-    wsReport.Cells(row, 2).Interior.Color = RGB(227, 242, 253)
-    row = row + 1
-
-    wsReport.Cells(row, 2).Value = "Project:"
-    wsReport.Cells(row, 3).Value = wsInputs.Range("C7").Value
-    row = row + 1
-    wsReport.Cells(row, 2).Value = "Location:"
-    wsReport.Cells(row, 3).Value = wsInputs.Range("C9").Value
-    row = row + 1
-    wsReport.Cells(row, 2).Value = "Capacity:"
-    wsReport.Cells(row, 3).Value = wsInputs.Range("C10").Value & " MW / " & wsInputs.Range("C12").Value & " MWh"
-    row = row + 1
-    wsReport.Cells(row, 2).Value = "Assumptions:"
-    wsReport.Cells(row, 3).Value = wsInputs.Range("C6").Value
-    row = row + 2
-
-    wsReport.Cells(row, 2).Value = "KEY METRICS"
-    wsReport.Cells(row, 2).Font.Bold = True
-    wsReport.Cells(row, 2).Interior.Color = RGB(227, 242, 253)
-    row = row + 1
-
-    wsReport.Cells(row, 2).Value = "BCR:"
-    wsReport.Cells(row, 3).Value = wsResults.Range("C11").Value
-    wsReport.Cells(row, 3).NumberFormat = "0.00"
-    row = row + 1
-    wsReport.Cells(row, 2).Value = "NPV:"
-    wsReport.Cells(row, 3).Value = wsResults.Range("C12").Value
-    wsReport.Cells(row, 3).NumberFormat = "$#,##0"
-    row = row + 1
-    wsReport.Cells(row, 2).Value = "IRR:"
-    wsReport.Cells(row, 3).Value = wsResults.Range("C13").Value
-    wsReport.Cells(row, 3).NumberFormat = "0.0%"
-    row = row + 2
-
-    wsReport.Cells(row, 2).Value = "RECOMMENDATION"
-    wsReport.Cells(row, 2).Font.Bold = True
-    wsReport.Cells(row, 2).Interior.Color = RGB(227, 242, 253)
-    row = row + 1
-    wsReport.Cells(row, 2).Value = wsResults.Range("B19").Value
-    wsReport.Cells(row, 2).Font.Bold = True
-
-    wsReport.Columns("B").ColumnWidth = 20
-    wsReport.Columns("C").ColumnWidth = 30
-
-    MsgBox "Report generated on 'Report' sheet.", vbInformation
-End Sub
-
-Sub ExportToPDF()
-    Dim wsReport As Worksheet
-    Dim filePath As String
-
-    On Error Resume Next
-    Set wsReport = ThisWorkbook.Sheets("Report")
-    On Error GoTo 0
-
-    If wsReport Is Nothing Then
-        MsgBox "Please run 'Generate Report' first.", vbExclamation
-        Exit Sub
-    End If
-
-    filePath = Application.GetSaveAsFilename( _
-        InitialFileName:="BESS_Analysis_Report.pdf", _
-        FileFilter:="PDF Files (*.pdf), *.pdf")
-
-    If filePath <> "False" Then
-        wsReport.ExportAsFixedFormat Type:=xlTypePDF, Filename:=filePath
-        MsgBox "PDF exported to: " & filePath, vbInformation
-    End If
-End Sub
-
-Sub RefreshCalculations()
-    Application.CalculateFull
-    MsgBox "All calculations refreshed.", vbInformation
-End Sub
-'''
-
-
-def create_vba_helper_script():
-    """Create a helper script to extract vbaProject.bin from an existing .xlsm file."""
-    script_content = '''#!/usr/bin/env python3
-"""Helper script to create vbaProject.bin for macro-enabled Excel files.
-
-Usage:
-    python create_vba_template.py <path_to_xlsm>
-
-To create vbaProject.bin:
-1. Open Microsoft Excel
-2. Create a new workbook
-3. Press Alt+F11 to open VBA Editor
-4. Insert > Module
-5. Paste the VBA code from get_vba_code() in excel_generator.py
-6. Save as 'template.xlsm' (Macro-Enabled Workbook)
-7. Run: python create_vba_template.py template.xlsm
-"""
-
-import sys
-import zipfile
-from pathlib import Path
-
-
-def extract_vba_bin(xlsm_path):
-    """Extract vbaProject.bin from an .xlsm file."""
-    resources_dir = Path('./resources')
-    resources_dir.mkdir(exist_ok=True)
-
-    with zipfile.ZipFile(xlsm_path, 'r') as zf:
-        try:
-            vba_data = zf.read('xl/vbaProject.bin')
-            output_path = resources_dir / 'vbaProject.bin'
-            with open(output_path, 'wb') as f:
-                f.write(vba_data)
-            print(f"Successfully extracted: {output_path}")
-            return True
-        except KeyError:
-            print("Error: No vbaProject.bin found in the .xlsm file")
-            print("Make sure the workbook contains VBA macros.")
-            return False
-
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(__doc__)
-    else:
-        extract_vba_bin(sys.argv[1])
-'''
-    script_path = Path(__file__).parent / 'create_vba_template.py'
-    with open(script_path, 'w') as f:
-        f.write(script_content)
-    print(f"Created: {script_path}")
-
-
 if __name__ == "__main__":
     output = sys.argv[1] if len(sys.argv) > 1 else "BESS_Analyzer"
 
@@ -1895,11 +1787,7 @@ if __name__ == "__main__":
     vba_path = Path(__file__).parent / 'resources' / 'vbaProject.bin'
 
     if not vba_path.exists():
-        print("Note: vbaProject.bin not found. Creating helper script...")
-        create_vba_helper_script()
-        print("\nTo enable VBA macros:")
-        print("1. Create a template.xlsm with the VBA code from get_vba_code()")
-        print("2. Run: python create_vba_template.py template.xlsm")
-        print("3. Re-run this script to generate macro-enabled workbook\n")
+        print("Note: vbaProject.bin not found. Creating .xlsx without macros.")
+        print("See VBA_Code sheet for instructions to add macros manually.\n")
 
     create_workbook(output)
