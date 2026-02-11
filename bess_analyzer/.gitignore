@@ -10,5 +10,9 @@ venv
 .coverage
 htmlcov
 
-# Allow PyInstaller spec file (overrides parent .gitignore)
-!bess_analyzer.spec
+# Excel temp files
+~$*
+
+# Generated outputs
+Test_*.pdf
+*.bin

@@ -1,0 +1,13 @@
+# OS files
+.DS_Store
+*~$*
+
+# IDE / Editor
+.claude/
+.vscode/
+
+# Temp/generated files
+*.bin
+*_Final.xlsm
+*_Setup.xlsm
+Test_*.pdf
