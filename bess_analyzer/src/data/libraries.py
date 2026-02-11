@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List
 
-from src.models.project import BenefitStream, CostInputs, FinancingInputs, Project, TechnologySpecs
+from src.models.project import BenefitStream, CostInputs, FinancingInputs, Project, SpecialBenefitInputs, TechnologySpecs
 
 
 def _get_resource_path(relative_path: str) -> Path:
@@ -123,6 +123,9 @@ class AssumptionLibrary:
             # Charging cost and residual value
             charging_cost_per_mwh=cost_data.get("charging_cost_per_mwh", 30.0),
             residual_value_pct=cost_data.get("residual_value_pct", 0.10),
+            # Bulk discount for fleet purchases
+            bulk_discount_rate=cost_data.get("bulk_discount_rate", 0.0),
+            bulk_discount_threshold_mwh=cost_data.get("bulk_discount_threshold_mwh", 0.0),
         )
 
         # Apply technology specs
@@ -168,6 +171,30 @@ class AssumptionLibrary:
                 citation=b_data.get("citation", ""),
             )
             project.benefits.append(stream)
+
+        # Apply special benefits (formula-based) if provided
+        special_data = lib.get("special_benefits", {})
+        if special_data:
+            reliability = special_data.get("reliability", {})
+            safety = special_data.get("safety", {})
+            speed = special_data.get("speed_to_serve", {})
+
+            project.special_benefits = SpecialBenefitInputs(
+                # Reliability Benefits
+                reliability_enabled=reliability.get("enabled", False),
+                outage_hours_per_year=reliability.get("outage_hours_per_year", 4.0),
+                customer_cost_per_kwh=reliability.get("customer_cost_per_kwh", 10.0),
+                backup_capacity_pct=reliability.get("backup_capacity_pct", 0.50),
+                # Safety Benefits
+                safety_enabled=safety.get("enabled", False),
+                incident_probability=safety.get("incident_probability", 0.001),
+                incident_cost=safety.get("incident_cost", 1_000_000.0),
+                risk_reduction_factor=safety.get("risk_reduction_factor", 0.50),
+                # Speed-to-Serve Benefits
+                speed_enabled=speed.get("enabled", False),
+                months_saved=speed.get("months_saved", 24),
+                value_per_kw_month=speed.get("value_per_kw_month", 5.0),
+            )
 
         project.assumption_library = library_name
         project.library_version = lib.get("version", "")

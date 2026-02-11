@@ -19,7 +19,36 @@
     "insurance_pct_of_capex": 0.005,
     "property_tax_pct": 0.01,
     "charging_cost_per_mwh": 30,
-    "residual_value_pct": 0.10
+    "residual_value_pct": 0.10,
+    "bulk_discount_rate": 0.0,
+    "bulk_discount_threshold_mwh": 0
+  },
+
+  "special_benefits": {
+    "reliability": {
+      "enabled": false,
+      "outage_hours_per_year": 4.0,
+      "customer_cost_per_kwh": 10.0,
+      "backup_capacity_pct": 0.50,
+      "description": "Avoided customer outage costs from grid instability",
+      "data_source": "LBNL ICE Calculator",
+      "citation": "Lawrence Berkeley National Laboratory. Interruption Cost Estimate Calculator. 2024."
+    },
+    "safety": {
+      "enabled": false,
+      "incident_probability": 0.001,
+      "incident_cost": 500000,
+      "risk_reduction_factor": 0.25,
+      "description": "Reduced safety incidents from grid stabilization services",
+      "data_source": "Utility Safety Reports"
+    },
+    "speed_to_serve": {
+      "enabled": false,
+      "months_saved": 24,
+      "value_per_kw_month": 5.0,
+      "description": "Value of faster deployment compared to gas peaker alternatives",
+      "data_source": "EIA Construction Cost Analysis"
+    }
   },
 
   "technology": {

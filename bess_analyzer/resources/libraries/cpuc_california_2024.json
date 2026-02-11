@@ -19,7 +19,36 @@
     "insurance_pct_of_capex": 0.005,
     "property_tax_pct": 0.0105,
     "charging_cost_per_mwh": 25,
-    "residual_value_pct": 0.10
+    "residual_value_pct": 0.10,
+    "bulk_discount_rate": 0.0,
+    "bulk_discount_threshold_mwh": 0
+  },
+
+  "special_benefits": {
+    "reliability": {
+      "enabled": true,
+      "outage_hours_per_year": 6.0,
+      "customer_cost_per_kwh": 12.0,
+      "backup_capacity_pct": 0.50,
+      "description": "Avoided outage costs from PSPS events and wildfire-related shutoffs",
+      "data_source": "CPUC PSPS Cost Analysis 2024",
+      "citation": "California Public Utilities Commission. Public Safety Power Shutoff Cost Analysis. 2024."
+    },
+    "safety": {
+      "enabled": false,
+      "incident_probability": 0.0005,
+      "incident_cost": 750000,
+      "risk_reduction_factor": 0.30,
+      "description": "Reduced grid safety incidents from voltage support and frequency regulation",
+      "data_source": "IOU Safety Reports"
+    },
+    "speed_to_serve": {
+      "enabled": false,
+      "months_saved": 24,
+      "value_per_kw_month": 6.0,
+      "description": "Value of faster deployment vs gas peaker (BESS: 12-18 months vs peaker: 36+ months)",
+      "data_source": "CPUC Procurement Analysis"
+    }
   },
 
   "technology": {

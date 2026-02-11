@@ -17,6 +17,7 @@ from src.models.project import (
     FinancingInputs,
     Project,
     ProjectBasics,
+    SpecialBenefitInputs,
     TechnologySpecs,
 )
 
@@ -159,6 +160,28 @@ def _calculate_payback(annual_net: List[float]) -> Optional[float]:
     return None
 
 
+def _get_bulk_discount_factor(project: Project) -> float:
+    """Calculate bulk discount multiplier for fleet purchases.
+
+    Returns a multiplier to apply to all costs when project capacity
+    meets or exceeds the bulk discount threshold.
+
+    Args:
+        project: Project with costs containing bulk discount parameters.
+
+    Returns:
+        Discount multiplier (e.g., 0.90 for 10% discount), or 1.0 if no discount.
+    """
+    costs = project.costs
+    capacity_mwh = project.basics.capacity_mwh
+
+    if (costs.bulk_discount_rate > 0 and
+        costs.bulk_discount_threshold_mwh > 0 and
+        capacity_mwh >= costs.bulk_discount_threshold_mwh):
+        return 1.0 - costs.bulk_discount_rate
+    return 1.0
+
+
 def calculate_project_economics(project: Project) -> FinancialResults:
     """Run complete economic analysis on a BESS project.
 
@@ -190,16 +213,19 @@ def calculate_project_economics(project: Project) -> FinancialResults:
     capacity_kw = basics.capacity_mw * 1000
     capacity_kwh = basics.capacity_mwh * 1000
 
+    # Calculate bulk discount factor for fleet purchases
+    bulk_discount = _get_bulk_discount_factor(project)
+
     # --- Build annual cost stream ---
     annual_costs = [0.0] * (n + 1)
 
-    # Year 0: Capital expenditure (battery system)
-    battery_capex = costs.capex_per_kwh * capacity_kwh
+    # Year 0: Capital expenditure (battery system) with bulk discount
+    battery_capex = costs.capex_per_kwh * capacity_kwh * bulk_discount
 
-    # Year 0: Infrastructure costs (common to all utility projects)
-    interconnection_cost = costs.interconnection_per_kw * capacity_kw
-    land_cost = costs.land_per_kw * capacity_kw
-    permitting_cost = costs.permitting_per_kw * capacity_kw
+    # Year 0: Infrastructure costs (common to all utility projects) with bulk discount
+    interconnection_cost = costs.interconnection_per_kw * capacity_kw * bulk_discount
+    land_cost = costs.land_per_kw * capacity_kw * bulk_discount
+    permitting_cost = costs.permitting_per_kw * capacity_kw * bulk_discount
     infrastructure_costs = interconnection_cost + land_cost + permitting_cost
 
     # Total pre-ITC CapEx
@@ -213,9 +239,9 @@ def calculate_project_economics(project: Project) -> FinancialResults:
     # Year 0 net capital cost (after ITC)
     annual_costs[0] = total_capex - itc_credit
 
-    # Years 1-N: Fixed O&M
+    # Years 1-N: Fixed O&M with bulk discount
     for t in range(1, n + 1):
-        annual_costs[t] += costs.fom_per_kw_year * capacity_kw
+        annual_costs[t] += costs.fom_per_kw_year * capacity_kw * bulk_discount
 
     # Years 1-N: Variable O&M + Charging costs (based on annual discharge energy)
     # Uses cycles_per_day instead of hardcoded 1 cycle
@@ -243,12 +269,12 @@ def calculate_project_economics(project: Project) -> FinancialResults:
         remaining_value = total_capex * (1 - t / n)
         annual_costs[t] += remaining_value * costs.property_tax_pct
 
-    # Augmentation year: battery replacement cost (adjusted for learning curve)
+    # Augmentation year: battery replacement cost (adjusted for learning curve + bulk discount)
     # Cost declines at learning_rate annually from base year
     aug_year = tech.augmentation_year
     if 1 <= aug_year <= n:
-        # Get augmentation cost adjusted for technology cost decline
-        adjusted_aug_cost = costs.get_augmentation_cost(aug_year)
+        # Get augmentation cost adjusted for technology cost decline and bulk discount
+        adjusted_aug_cost = costs.get_augmentation_cost(aug_year) * bulk_discount
         annual_costs[aug_year] += adjusted_aug_cost * capacity_kwh
 
     # Final year: decommissioning minus residual value
@@ -275,6 +301,43 @@ def calculate_project_economics(project: Project) -> FinancialResults:
             for t in range(1, n + 1)
         )
         benefit_pvs[benefit.name] = pv_this
+
+    # --- Process special benefits (formula-based) ---
+    special = project.special_benefits
+    if special:
+        # Reliability Benefits (annual, with degradation)
+        if special.reliability_enabled:
+            reliability_base = special.calculate_reliability_annual(basics.capacity_mwh)
+            for t in range(1, n + 1):
+                # Apply battery degradation to reliability benefit
+                degradation_factor = (1 - tech.degradation_rate_annual) ** (t - 1)
+                annual_benefits[t] += reliability_base * degradation_factor
+
+            # Calculate PV for benefit breakdown
+            pv_reliability = sum(
+                reliability_base * (1 - tech.degradation_rate_annual) ** (t - 1) / (1 + r) ** t
+                for t in range(1, n + 1)
+            )
+            benefit_pvs["Reliability (Avoided Outage)"] = pv_reliability
+
+        # Safety Benefits (annual, constant - no degradation)
+        if special.safety_enabled:
+            safety_annual = special.calculate_safety_annual(basics.capacity_mw)
+            for t in range(1, n + 1):
+                annual_benefits[t] += safety_annual
+
+            # Calculate PV for benefit breakdown
+            pv_safety = sum(safety_annual / (1 + r) ** t for t in range(1, n + 1))
+            benefit_pvs["Safety (Avoided Incident)"] = pv_safety
+
+        # Speed-to-Serve Benefits (ONE-TIME in Year 1 only)
+        if special.speed_enabled:
+            speed_onetime = special.calculate_speed_onetime(capacity_kw)
+            annual_benefits[1] += speed_onetime
+
+            # PV is just the discounted Year 1 value
+            pv_speed = speed_onetime / (1 + r)
+            benefit_pvs["Speed-to-Serve (One-time)"] = pv_speed
 
     # --- Calculate totals ---
     pv_costs = sum(c / (1 + r) ** t for t, c in enumerate(annual_costs))

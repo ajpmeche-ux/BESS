@@ -27,6 +27,7 @@ from src.models.project import (
     FinancingInputs,
     Project,
     ProjectBasics,
+    SpecialBenefitInputs,
     TechnologySpecs,
 )
 from src.data.validators import (
@@ -920,3 +921,283 @@ class TestFinancingInputs:
 
         # Lower WACC should give higher NPV
         assert results_low.npv > results_high.npv
+
+
+# ---- Bulk Discount Tests ----
+
+class TestBulkDiscount:
+    def test_bulk_discount_default(self):
+        """Default bulk discount should be 0 (disabled)."""
+        costs = CostInputs()
+        assert costs.bulk_discount_rate == 0.0
+        assert costs.bulk_discount_threshold_mwh == 0.0
+
+    def test_bulk_discount_validation(self):
+        """bulk_discount_rate should be 0-30%."""
+        with pytest.raises(ValueError):
+            CostInputs(bulk_discount_rate=-0.1)
+        with pytest.raises(ValueError):
+            CostInputs(bulk_discount_rate=0.40)
+
+    def test_bulk_discount_threshold_validation(self):
+        """bulk_discount_threshold_mwh should not be negative."""
+        with pytest.raises(ValueError):
+            CostInputs(bulk_discount_threshold_mwh=-100)
+
+    def test_bulk_discount_reduces_costs(self):
+        """Bulk discount should reduce all costs when capacity >= threshold."""
+        basics = ProjectBasics(capacity_mw=100, duration_hours=4)  # 400 MWh
+        tech = TechnologySpecs()
+        benefits = [BenefitStream(name="RA", annual_values=[15_000_000] * 20)]
+
+        # Without bulk discount
+        costs_no_discount = CostInputs(
+            capex_per_kwh=160,
+            fom_per_kw_year=25,
+            bulk_discount_rate=0.0,
+            bulk_discount_threshold_mwh=0,
+        )
+        # With 10% bulk discount, threshold 300 MWh (project has 400 MWh)
+        costs_with_discount = CostInputs(
+            capex_per_kwh=160,
+            fom_per_kw_year=25,
+            bulk_discount_rate=0.10,
+            bulk_discount_threshold_mwh=300,
+        )
+
+        project_no = Project(basics=basics, technology=tech, costs=costs_no_discount, benefits=benefits)
+        project_with = Project(basics=basics, technology=tech, costs=costs_with_discount, benefits=benefits)
+
+        results_no = calculate_project_economics(project_no)
+        results_with = calculate_project_economics(project_with)
+
+        # Year 0 CapEx should be ~10% lower with discount
+        assert results_with.annual_costs[0] < results_no.annual_costs[0] * 0.95
+        # Year 1 O&M should be lower (not exactly 10% since property tax/insurance not discounted)
+        assert results_with.annual_costs[1] < results_no.annual_costs[1]
+        # FOM component should be 10% lower: 25 * 100000 * 0.9 = 2.25M vs 2.5M
+        fom_reduction = (25 * 100_000) - (25 * 100_000 * 0.9)  # $250,000 savings
+        year1_savings = results_no.annual_costs[1] - results_with.annual_costs[1]
+        assert year1_savings > fom_reduction * 0.9  # Allow some tolerance
+
+    def test_bulk_discount_not_applied_below_threshold(self):
+        """Bulk discount should NOT apply when capacity < threshold."""
+        basics = ProjectBasics(capacity_mw=50, duration_hours=4)  # 200 MWh
+        tech = TechnologySpecs()
+        benefits = [BenefitStream(name="RA", annual_values=[7_500_000] * 20)]
+
+        # Threshold is 300 MWh, project only has 200 MWh
+        costs_with_discount = CostInputs(
+            capex_per_kwh=160,
+            bulk_discount_rate=0.10,
+            bulk_discount_threshold_mwh=300,
+        )
+        costs_no_discount = CostInputs(
+            capex_per_kwh=160,
+            bulk_discount_rate=0.0,
+            bulk_discount_threshold_mwh=0,
+        )
+
+        project_with = Project(basics=basics, technology=tech, costs=costs_with_discount, benefits=benefits)
+        project_no = Project(basics=basics, technology=tech, costs=costs_no_discount, benefits=benefits)
+
+        results_with = calculate_project_economics(project_with)
+        results_no = calculate_project_economics(project_no)
+
+        # Costs should be the same since capacity < threshold
+        assert abs(results_with.annual_costs[0] - results_no.annual_costs[0]) < 1.0
+
+    def test_library_loads_bulk_discount(self):
+        """Libraries should load bulk discount fields."""
+        lib = AssumptionLibrary()
+        names = lib.get_library_names()
+        project = Project()
+        nrel_name = [n for n in names if "NREL" in n][0]
+        lib.apply_library_to_project(project, nrel_name)
+        # Default is 0 (disabled)
+        assert project.costs.bulk_discount_rate == 0.0
+        assert project.costs.bulk_discount_threshold_mwh == 0.0
+
+
+# ---- Special Benefits Tests ----
+
+class TestSpecialBenefits:
+    def test_special_benefits_defaults(self):
+        """SpecialBenefitInputs should have sensible defaults."""
+        sb = SpecialBenefitInputs()
+        assert sb.reliability_enabled is False
+        assert sb.safety_enabled is False
+        assert sb.speed_enabled is False
+        assert sb.outage_hours_per_year == 4.0
+        assert sb.customer_cost_per_kwh == 10.0
+        assert sb.backup_capacity_pct == 0.50
+
+    def test_reliability_calculation(self):
+        """Reliability benefit should calculate correctly."""
+        sb = SpecialBenefitInputs(
+            reliability_enabled=True,
+            outage_hours_per_year=4.0,
+            customer_cost_per_kwh=10.0,
+            backup_capacity_pct=0.50,
+        )
+        # 4 hrs × $10/kWh × 400 MWh × 1000 × 0.5 = $8,000,000
+        result = sb.calculate_reliability_annual(400.0)
+        assert abs(result - 8_000_000) < 1.0
+
+    def test_reliability_disabled(self):
+        """Reliability benefit should return 0 when disabled."""
+        sb = SpecialBenefitInputs(reliability_enabled=False)
+        result = sb.calculate_reliability_annual(400.0)
+        assert result == 0.0
+
+    def test_safety_calculation(self):
+        """Safety benefit should calculate correctly."""
+        sb = SpecialBenefitInputs(
+            safety_enabled=True,
+            incident_probability=0.001,
+            incident_cost=1_000_000,
+            risk_reduction_factor=0.50,
+        )
+        # 0.001 × $1M × 0.5 × (100 MW / 100) = $500
+        result = sb.calculate_safety_annual(100.0)
+        assert abs(result - 500) < 1.0
+
+    def test_safety_disabled(self):
+        """Safety benefit should return 0 when disabled."""
+        sb = SpecialBenefitInputs(safety_enabled=False)
+        result = sb.calculate_safety_annual(100.0)
+        assert result == 0.0
+
+    def test_speed_calculation(self):
+        """Speed-to-serve benefit should calculate correctly."""
+        sb = SpecialBenefitInputs(
+            speed_enabled=True,
+            months_saved=24,
+            value_per_kw_month=5.0,
+        )
+        # 24 months × $5/kW-month × 100,000 kW = $12,000,000
+        result = sb.calculate_speed_onetime(100_000)
+        assert abs(result - 12_000_000) < 1.0
+
+    def test_speed_disabled(self):
+        """Speed benefit should return 0 when disabled."""
+        sb = SpecialBenefitInputs(speed_enabled=False)
+        result = sb.calculate_speed_onetime(100_000)
+        assert result == 0.0
+
+    def test_special_benefits_validation(self):
+        """Special benefit inputs should be validated."""
+        with pytest.raises(ValueError):
+            SpecialBenefitInputs(backup_capacity_pct=1.5)  # > 1.0
+        with pytest.raises(ValueError):
+            SpecialBenefitInputs(risk_reduction_factor=-0.1)  # < 0
+        with pytest.raises(ValueError):
+            SpecialBenefitInputs(months_saved=-5)  # Negative
+
+    def test_reliability_in_project_economics(self):
+        """Reliability benefits should be added to project economics."""
+        basics = ProjectBasics(capacity_mw=100, duration_hours=4)
+        tech = TechnologySpecs()
+        costs = CostInputs(itc_percent=0.30)
+        benefits = [BenefitStream(name="RA", annual_values=[15_000_000] * 20)]
+        special = SpecialBenefitInputs(
+            reliability_enabled=True,
+            outage_hours_per_year=4.0,
+            customer_cost_per_kwh=10.0,
+            backup_capacity_pct=0.50,
+        )
+
+        project_no_special = Project(basics=basics, technology=tech, costs=costs, benefits=benefits)
+        project_with_special = Project(basics=basics, technology=tech, costs=costs, benefits=benefits, special_benefits=special)
+
+        results_no = calculate_project_economics(project_no_special)
+        results_with = calculate_project_economics(project_with_special)
+
+        # NPV should be higher with reliability benefits
+        assert results_with.npv > results_no.npv
+        # Should show in benefit breakdown
+        assert "Reliability (Avoided Outage)" in results_with.benefit_breakdown
+
+    def test_speed_is_onetime_year1(self):
+        """Speed-to-serve should only appear in Year 1."""
+        basics = ProjectBasics(capacity_mw=100, duration_hours=4)
+        tech = TechnologySpecs()
+        costs = CostInputs(itc_percent=0.30)
+        benefits = [BenefitStream(name="RA", annual_values=[15_000_000] * 20)]
+        special = SpecialBenefitInputs(
+            speed_enabled=True,
+            months_saved=24,
+            value_per_kw_month=5.0,
+        )
+
+        project = Project(basics=basics, technology=tech, costs=costs, benefits=benefits, special_benefits=special)
+        results = calculate_project_economics(project)
+
+        # Speed benefit should be in Year 1
+        speed_benefit = 24 * 5.0 * 100_000  # $12M
+        # Year 1 should include speed + RA
+        assert results.annual_benefits[1] > results.annual_benefits[2]  # Year 1 > Year 2
+
+        # Verify speed benefit shows in breakdown
+        assert "Speed-to-Serve (One-time)" in results.benefit_breakdown
+
+    def test_library_loads_special_benefits(self):
+        """Libraries should load special benefits configuration."""
+        lib = AssumptionLibrary()
+        names = lib.get_library_names()
+        project = Project()
+        # CPUC has reliability enabled
+        cpuc_name = [n for n in names if "CPUC" in n][0]
+        lib.apply_library_to_project(project, cpuc_name)
+        assert project.special_benefits is not None
+        assert project.special_benefits.reliability_enabled is True
+        assert project.special_benefits.outage_hours_per_year == 6.0
+
+    def test_special_benefits_serialization(self):
+        """Special benefits should serialize and deserialize correctly."""
+        sb = SpecialBenefitInputs(
+            reliability_enabled=True,
+            outage_hours_per_year=5.0,
+            customer_cost_per_kwh=12.0,
+            backup_capacity_pct=0.60,
+            safety_enabled=True,
+            incident_probability=0.002,
+            incident_cost=500_000,
+            risk_reduction_factor=0.40,
+            speed_enabled=True,
+            months_saved=18,
+            value_per_kw_month=6.0,
+        )
+        data = sb.to_dict()
+        loaded = SpecialBenefitInputs.from_dict(data)
+        assert loaded.reliability_enabled is True
+        assert loaded.outage_hours_per_year == 5.0
+        assert loaded.safety_enabled is True
+        assert loaded.incident_probability == 0.002
+        assert loaded.speed_enabled is True
+        assert loaded.months_saved == 18
+
+    def test_project_with_special_benefits_roundtrip(self):
+        """Project with special benefits should save and load correctly."""
+        project = Project(
+            basics=ProjectBasics(name="Special Test", capacity_mw=50),
+            costs=CostInputs(capex_per_kwh=150, bulk_discount_rate=0.05, bulk_discount_threshold_mwh=200),
+            special_benefits=SpecialBenefitInputs(
+                reliability_enabled=True,
+                outage_hours_per_year=6.0,
+            ),
+            benefits=[BenefitStream(name="RA", annual_values=[1000, 1020])],
+        )
+
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+            path = f.name
+
+        try:
+            save_project(project, path)
+            loaded = load_project(path)
+            assert loaded.special_benefits is not None
+            assert loaded.special_benefits.reliability_enabled is True
+            assert loaded.special_benefits.outage_hours_per_year == 6.0
+            assert loaded.costs.bulk_discount_rate == 0.05
+        finally:
+            os.unlink(path)

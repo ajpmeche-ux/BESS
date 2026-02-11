@@ -104,6 +104,27 @@ class CellRefs:
     LEARNING_RATE = 'C61'
     COST_BASE_YEAR = 'C62'
 
+    # Bulk Discount (starting row 64)
+    BULK_DISCOUNT_RATE = 'C64'
+    BULK_DISCOUNT_THRESHOLD = 'C65'
+
+    # Special Benefits - Reliability (starting row 68)
+    RELIABILITY_ENABLED = 'C68'
+    OUTAGE_HOURS = 'C69'
+    CUSTOMER_COST_KWH = 'C70'
+    BACKUP_CAPACITY_PCT = 'C71'
+
+    # Special Benefits - Safety (starting row 74)
+    SAFETY_ENABLED = 'C74'
+    INCIDENT_PROBABILITY = 'C75'
+    INCIDENT_COST = 'C76'
+    RISK_REDUCTION = 'C77'
+
+    # Special Benefits - Speed-to-Serve (starting row 80)
+    SPEED_ENABLED = 'C80'
+    MONTHS_SAVED = 'C81'
+    VALUE_PER_KW_MONTH = 'C82'
+
 
 def create_workbook(output_path: str, with_macros: bool = True):
     """Create the complete BESS Analyzer workbook.
@@ -602,6 +623,100 @@ def create_inputs_sheet(workbook, ws, formats):
     ws.write(f'B{row}', 'Cost Base Year', formats['bold'])
     ws.write(f'C{row}', 2024, formats['input'])
     ws.write(f'E{row}', 'Reference year for base costs', formats['tooltip'])
+    row += 1
+
+    # === BULK DISCOUNT (for fleet purchases) ===
+    # Row 63: Section header
+    ws.merge_range(f'B{row}:E{row}', 'BULK DISCOUNT (Fleet Purchases)', formats['section'])
+    row += 1
+
+    # Row 64: Bulk Discount Rate
+    ws.write(f'B{row}', 'Bulk Discount Rate (%)', formats['bold'])
+    ws.write(f'C{row}', 0.0, formats['input_percent'])
+    ws.write(f'E{row}', 'Discount on ALL costs when buying fleet (e.g., 0.10 = 10%)', formats['tooltip'])
+    assert row == 64, f"Bulk discount rate should be at row 64, got {row}"
+    row += 1
+
+    # Row 65: Bulk Discount Threshold
+    ws.write(f'B{row}', 'Threshold Capacity (MWh)', formats['bold'])
+    ws.write(f'C{row}', 0, formats['input'])
+    ws.write(f'E{row}', 'Minimum MWh capacity to qualify for bulk discount', formats['tooltip'])
+    row += 2
+
+    # === SPECIAL BENEFITS - RELIABILITY ===
+    # Row 67: Section header
+    ws.merge_range(f'B{row}:E{row}', 'SPECIAL BENEFITS - Reliability (Avoided Outage Cost)', formats['section'])
+    row += 1
+
+    # Row 68-71: Reliability inputs
+    ws.write(f'B{row}', 'Reliability Enabled', formats['bold'])
+    ws.write(f'C{row}', 'No', formats['input'])
+    ws.write(f'E{row}', 'Enter "Yes" or "No"', formats['tooltip'])
+    assert row == 68, f"Reliability enabled should be at row 68, got {row}"
+    row += 1
+
+    ws.write(f'B{row}', 'Outage Hours per Year', formats['bold'])
+    ws.write(f'C{row}', 4.0, formats['input'])
+    ws.write(f'E{row}', 'Expected annual outage hours avoided', formats['tooltip'])
+    row += 1
+
+    ws.write(f'B{row}', 'Customer Cost ($/kWh)', formats['bold'])
+    ws.write(f'C{row}', 10.0, formats['input_currency'])
+    ws.write(f'E{row}', 'Cost to customers per kWh of outage (LBNL ICE)', formats['tooltip'])
+    row += 1
+
+    ws.write(f'B{row}', 'Backup Capacity (%)', formats['bold'])
+    ws.write(f'C{row}', 0.50, formats['input_percent'])
+    ws.write(f'E{row}', 'Fraction of capacity available for backup', formats['tooltip'])
+    row += 2
+
+    # === SPECIAL BENEFITS - SAFETY ===
+    # Row 73: Section header
+    ws.merge_range(f'B{row}:E{row}', 'SPECIAL BENEFITS - Safety (Avoided Incident Cost)', formats['section'])
+    row += 1
+
+    # Row 74-77: Safety inputs
+    ws.write(f'B{row}', 'Safety Enabled', formats['bold'])
+    ws.write(f'C{row}', 'No', formats['input'])
+    ws.write(f'E{row}', 'Enter "Yes" or "No"', formats['tooltip'])
+    assert row == 74, f"Safety enabled should be at row 74, got {row}"
+    row += 1
+
+    ws.write(f'B{row}', 'Incident Probability', formats['bold'])
+    ws.write(f'C{row}', 0.001, formats['input'])
+    ws.write(f'E{row}', 'Annual probability of grid safety incident (e.g., 0.001 = 0.1%)', formats['tooltip'])
+    row += 1
+
+    ws.write(f'B{row}', 'Incident Cost ($)', formats['bold'])
+    ws.write(f'C{row}', 1000000, formats['input_currency'])
+    ws.write(f'E{row}', 'Cost per safety incident', formats['tooltip'])
+    row += 1
+
+    ws.write(f'B{row}', 'Risk Reduction Factor', formats['bold'])
+    ws.write(f'C{row}', 0.50, formats['input_percent'])
+    ws.write(f'E{row}', 'Fraction of risk mitigated by BESS (e.g., 0.5 = 50%)', formats['tooltip'])
+    row += 2
+
+    # === SPECIAL BENEFITS - SPEED TO SERVE ===
+    # Row 79: Section header
+    ws.merge_range(f'B{row}:E{row}', 'SPECIAL BENEFITS - Speed-to-Serve (Faster Deployment)', formats['section'])
+    row += 1
+
+    # Row 80-82: Speed-to-Serve inputs
+    ws.write(f'B{row}', 'Speed-to-Serve Enabled', formats['bold'])
+    ws.write(f'C{row}', 'No', formats['input'])
+    ws.write(f'E{row}', 'Enter "Yes" or "No" - ONE-TIME Year 1 benefit', formats['tooltip'])
+    assert row == 80, f"Speed enabled should be at row 80, got {row}"
+    row += 1
+
+    ws.write(f'B{row}', 'Months Saved', formats['bold'])
+    ws.write(f'C{row}', 24, formats['input'])
+    ws.write(f'E{row}', 'Months faster than alternative (e.g., gas peaker)', formats['tooltip'])
+    row += 1
+
+    ws.write(f'B{row}', 'Value per kW-Month ($)', formats['bold'])
+    ws.write(f'C{row}', 5.0, formats['input_currency'])
+    ws.write(f'E{row}', 'Value of each month of earlier deployment per kW', formats['tooltip'])
     row += 2
 
     # === REPORT BUTTONS ===
@@ -1257,6 +1372,10 @@ def create_vba_code_sheet(workbook, ws, formats):
 ' - Financing: {CellRefs.DEBT_PERCENT} to {CellRefs.TAX_RATE}
 ' - Benefits: C52:D59 (8 rows)
 ' - Learning Rate: {CellRefs.LEARNING_RATE}
+' - Bulk Discount: {CellRefs.BULK_DISCOUNT_RATE}, {CellRefs.BULK_DISCOUNT_THRESHOLD}
+' - Reliability: {CellRefs.RELIABILITY_ENABLED} to {CellRefs.BACKUP_CAPACITY_PCT}
+' - Safety: {CellRefs.SAFETY_ENABLED} to {CellRefs.RISK_REDUCTION}
+' - Speed-to-Serve: {CellRefs.SPEED_ENABLED} to {CellRefs.VALUE_PER_KW_MONTH}
 '=================================================================
 
 Sub LoadNRELLibrary()
@@ -1314,6 +1433,27 @@ Sub LoadNRELLibrary()
 
         ' Learning Curve
         .Range("{CellRefs.LEARNING_RATE}").Value = 0.12
+
+        ' Bulk Discount (disabled by default)
+        .Range("{CellRefs.BULK_DISCOUNT_RATE}").Value = 0
+        .Range("{CellRefs.BULK_DISCOUNT_THRESHOLD}").Value = 0
+
+        ' Special Benefits - Reliability (disabled by default)
+        .Range("{CellRefs.RELIABILITY_ENABLED}").Value = "No"
+        .Range("{CellRefs.OUTAGE_HOURS}").Value = 4
+        .Range("{CellRefs.CUSTOMER_COST_KWH}").Value = 10
+        .Range("{CellRefs.BACKUP_CAPACITY_PCT}").Value = 0.5
+
+        ' Special Benefits - Safety (disabled)
+        .Range("{CellRefs.SAFETY_ENABLED}").Value = "No"
+        .Range("{CellRefs.INCIDENT_PROBABILITY}").Value = 0.001
+        .Range("{CellRefs.INCIDENT_COST}").Value = 500000
+        .Range("{CellRefs.RISK_REDUCTION}").Value = 0.25
+
+        ' Special Benefits - Speed-to-Serve (disabled)
+        .Range("{CellRefs.SPEED_ENABLED}").Value = "No"
+        .Range("{CellRefs.MONTHS_SAVED}").Value = 24
+        .Range("{CellRefs.VALUE_PER_KW_MONTH}").Value = 5
     End With
 
     Application.Calculate
@@ -1375,6 +1515,27 @@ Sub LoadLazardLibrary()
 
         ' Learning Curve
         .Range("{CellRefs.LEARNING_RATE}").Value = 0.1
+
+        ' Bulk Discount (disabled by default)
+        .Range("{CellRefs.BULK_DISCOUNT_RATE}").Value = 0
+        .Range("{CellRefs.BULK_DISCOUNT_THRESHOLD}").Value = 0
+
+        ' Special Benefits - Reliability (disabled by default)
+        .Range("{CellRefs.RELIABILITY_ENABLED}").Value = "No"
+        .Range("{CellRefs.OUTAGE_HOURS}").Value = 4
+        .Range("{CellRefs.CUSTOMER_COST_KWH}").Value = 8
+        .Range("{CellRefs.BACKUP_CAPACITY_PCT}").Value = 0.5
+
+        ' Special Benefits - Safety (disabled)
+        .Range("{CellRefs.SAFETY_ENABLED}").Value = "No"
+        .Range("{CellRefs.INCIDENT_PROBABILITY}").Value = 0.001
+        .Range("{CellRefs.INCIDENT_COST}").Value = 500000
+        .Range("{CellRefs.RISK_REDUCTION}").Value = 0.25
+
+        ' Special Benefits - Speed-to-Serve (disabled)
+        .Range("{CellRefs.SPEED_ENABLED}").Value = "No"
+        .Range("{CellRefs.MONTHS_SAVED}").Value = 24
+        .Range("{CellRefs.VALUE_PER_KW_MONTH}").Value = 5
     End With
 
     Application.Calculate
@@ -1437,11 +1598,33 @@ Sub LoadCPUCLibrary()
 
         ' Learning Curve
         .Range("{CellRefs.LEARNING_RATE}").Value = 0.11
+
+        ' Bulk Discount (disabled by default)
+        .Range("{CellRefs.BULK_DISCOUNT_RATE}").Value = 0
+        .Range("{CellRefs.BULK_DISCOUNT_THRESHOLD}").Value = 0
+
+        ' Special Benefits - Reliability (ENABLED for California PSPS events)
+        .Range("{CellRefs.RELIABILITY_ENABLED}").Value = "Yes"
+        .Range("{CellRefs.OUTAGE_HOURS}").Value = 6
+        .Range("{CellRefs.CUSTOMER_COST_KWH}").Value = 12
+        .Range("{CellRefs.BACKUP_CAPACITY_PCT}").Value = 0.5
+
+        ' Special Benefits - Safety (disabled)
+        .Range("{CellRefs.SAFETY_ENABLED}").Value = "No"
+        .Range("{CellRefs.INCIDENT_PROBABILITY}").Value = 0.0005
+        .Range("{CellRefs.INCIDENT_COST}").Value = 750000
+        .Range("{CellRefs.RISK_REDUCTION}").Value = 0.3
+
+        ' Special Benefits - Speed-to-Serve (disabled)
+        .Range("{CellRefs.SPEED_ENABLED}").Value = "No"
+        .Range("{CellRefs.MONTHS_SAVED}").Value = 24
+        .Range("{CellRefs.VALUE_PER_KW_MONTH}").Value = 6
     End With
 
     Application.Calculate
     MsgBox "CPUC California 2024 assumptions loaded." & vbCrLf & _
-           "Note: Includes 10% ITC Energy Community Adder.", vbInformation, "Library Loaded"
+           "Note: Includes 10% ITC Energy Community Adder." & vbCrLf & _
+           "Reliability benefits enabled for PSPS events.", vbInformation, "Library Loaded"
 End Sub
 
 
@@ -1648,6 +1831,19 @@ End Sub'''
         ("Benefits Start Row", "C52"),
         ("Benefits End Row", "C59"),
         ("Learning Rate", CellRefs.LEARNING_RATE),
+        ("Bulk Discount Rate", CellRefs.BULK_DISCOUNT_RATE),
+        ("Bulk Discount Threshold", CellRefs.BULK_DISCOUNT_THRESHOLD),
+        ("Reliability Enabled", CellRefs.RELIABILITY_ENABLED),
+        ("Outage Hours", CellRefs.OUTAGE_HOURS),
+        ("Customer Cost ($/kWh)", CellRefs.CUSTOMER_COST_KWH),
+        ("Backup Capacity %", CellRefs.BACKUP_CAPACITY_PCT),
+        ("Safety Enabled", CellRefs.SAFETY_ENABLED),
+        ("Incident Probability", CellRefs.INCIDENT_PROBABILITY),
+        ("Incident Cost", CellRefs.INCIDENT_COST),
+        ("Risk Reduction", CellRefs.RISK_REDUCTION),
+        ("Speed Enabled", CellRefs.SPEED_ENABLED),
+        ("Months Saved", CellRefs.MONTHS_SAVED),
+        ("Value per kW-Month", CellRefs.VALUE_PER_KW_MONTH),
     ]
 
     for name, cell in cell_refs:

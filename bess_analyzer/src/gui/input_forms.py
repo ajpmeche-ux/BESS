@@ -8,6 +8,7 @@ from datetime import date
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDateEdit,
     QDoubleSpinBox,
@@ -32,6 +33,7 @@ from src.models.project import (
     FinancingInputs,
     Project,
     ProjectBasics,
+    SpecialBenefitInputs,
     TechnologySpecs,
 )
 
@@ -74,6 +76,9 @@ class InputFormWidget(QWidget):
 
         # Section 8: Benefits
         layout.addWidget(self._create_benefits_section())
+
+        # Section 9: Special Benefits (formula-based)
+        layout.addWidget(self._create_special_benefits_section())
 
         layout.addStretch()
         scroll.setWidget(container)
@@ -425,6 +430,145 @@ class InputFormWidget(QWidget):
 
         return group
 
+    def _create_special_benefits_section(self) -> QGroupBox:
+        group = QGroupBox("Special Benefits & Bulk Discount")
+        layout = QVBoxLayout(group)
+
+        # Bulk Discount subsection
+        bulk_label = QLabel("Fleet Purchase Discount")
+        bulk_label.setStyleSheet("font-weight: bold; color: #1565c0;")
+        layout.addWidget(bulk_label)
+
+        self.bulk_discount_spin = QDoubleSpinBox()
+        self.bulk_discount_spin.setRange(0, 30.0)
+        self.bulk_discount_spin.setValue(0.0)
+        self.bulk_discount_spin.setSuffix(" %")
+        self.bulk_discount_spin.setDecimals(1)
+        self.bulk_discount_spin.setToolTip("Discount on ALL costs when buying fleet")
+        layout.addLayout(self._row("Bulk Discount Rate:", self.bulk_discount_spin))
+
+        self.bulk_threshold_spin = QDoubleSpinBox()
+        self.bulk_threshold_spin.setRange(0, 10000.0)
+        self.bulk_threshold_spin.setValue(0.0)
+        self.bulk_threshold_spin.setSuffix(" MWh")
+        self.bulk_threshold_spin.setDecimals(0)
+        self.bulk_threshold_spin.setToolTip("Minimum capacity to qualify for discount")
+        layout.addLayout(self._row("Threshold Capacity:", self.bulk_threshold_spin))
+
+        # Reliability Benefits subsection
+        reliability_label = QLabel("Reliability Benefits (Avoided Outage Cost)")
+        reliability_label.setStyleSheet("font-weight: bold; color: #1565c0; margin-top: 10px;")
+        layout.addWidget(reliability_label)
+
+        self.reliability_check = QCheckBox("Enable Reliability Benefits")
+        self.reliability_check.stateChanged.connect(self._toggle_reliability)
+        layout.addWidget(self.reliability_check)
+
+        self.outage_hours_spin = QDoubleSpinBox()
+        self.outage_hours_spin.setRange(0, 100.0)
+        self.outage_hours_spin.setValue(4.0)
+        self.outage_hours_spin.setSuffix(" hrs/yr")
+        self.outage_hours_spin.setDecimals(1)
+        self.outage_hours_spin.setEnabled(False)
+        layout.addLayout(self._row("Outage Hours/Year:", self.outage_hours_spin))
+
+        self.customer_cost_spin = QDoubleSpinBox()
+        self.customer_cost_spin.setRange(0, 100.0)
+        self.customer_cost_spin.setValue(10.0)
+        self.customer_cost_spin.setPrefix("$")
+        self.customer_cost_spin.setSuffix(" /kWh")
+        self.customer_cost_spin.setDecimals(2)
+        self.customer_cost_spin.setEnabled(False)
+        self.customer_cost_spin.setToolTip("Customer interruption cost (LBNL ICE)")
+        layout.addLayout(self._row("Customer Cost:", self.customer_cost_spin))
+
+        self.backup_pct_spin = QDoubleSpinBox()
+        self.backup_pct_spin.setRange(0, 100.0)
+        self.backup_pct_spin.setValue(50.0)
+        self.backup_pct_spin.setSuffix(" %")
+        self.backup_pct_spin.setDecimals(0)
+        self.backup_pct_spin.setEnabled(False)
+        layout.addLayout(self._row("Backup Capacity:", self.backup_pct_spin))
+
+        # Safety Benefits subsection
+        safety_label = QLabel("Safety Benefits (Avoided Incident Cost)")
+        safety_label.setStyleSheet("font-weight: bold; color: #1565c0; margin-top: 10px;")
+        layout.addWidget(safety_label)
+
+        self.safety_check = QCheckBox("Enable Safety Benefits")
+        self.safety_check.stateChanged.connect(self._toggle_safety)
+        layout.addWidget(self.safety_check)
+
+        self.incident_prob_spin = QDoubleSpinBox()
+        self.incident_prob_spin.setRange(0, 1.0)
+        self.incident_prob_spin.setValue(0.001)
+        self.incident_prob_spin.setDecimals(4)
+        self.incident_prob_spin.setEnabled(False)
+        self.incident_prob_spin.setToolTip("Annual probability of grid safety incident")
+        layout.addLayout(self._row("Incident Probability:", self.incident_prob_spin))
+
+        self.incident_cost_spin = QDoubleSpinBox()
+        self.incident_cost_spin.setRange(0, 10000000.0)
+        self.incident_cost_spin.setValue(1000000.0)
+        self.incident_cost_spin.setPrefix("$")
+        self.incident_cost_spin.setDecimals(0)
+        self.incident_cost_spin.setEnabled(False)
+        layout.addLayout(self._row("Incident Cost:", self.incident_cost_spin))
+
+        self.risk_reduction_spin = QDoubleSpinBox()
+        self.risk_reduction_spin.setRange(0, 100.0)
+        self.risk_reduction_spin.setValue(50.0)
+        self.risk_reduction_spin.setSuffix(" %")
+        self.risk_reduction_spin.setDecimals(0)
+        self.risk_reduction_spin.setEnabled(False)
+        self.risk_reduction_spin.setToolTip("Fraction of risk mitigated by BESS")
+        layout.addLayout(self._row("Risk Reduction:", self.risk_reduction_spin))
+
+        # Speed-to-Serve Benefits subsection
+        speed_label = QLabel("Speed-to-Serve Benefits (ONE-TIME Year 1)")
+        speed_label.setStyleSheet("font-weight: bold; color: #1565c0; margin-top: 10px;")
+        layout.addWidget(speed_label)
+
+        self.speed_check = QCheckBox("Enable Speed-to-Serve Benefits")
+        self.speed_check.stateChanged.connect(self._toggle_speed)
+        layout.addWidget(self.speed_check)
+
+        self.months_saved_spin = QSpinBox()
+        self.months_saved_spin.setRange(0, 60)
+        self.months_saved_spin.setValue(24)
+        self.months_saved_spin.setSuffix(" months")
+        self.months_saved_spin.setEnabled(False)
+        self.months_saved_spin.setToolTip("Months faster than gas peaker alternative")
+        layout.addLayout(self._row("Months Saved:", self.months_saved_spin))
+
+        self.value_per_kw_month_spin = QDoubleSpinBox()
+        self.value_per_kw_month_spin.setRange(0, 50.0)
+        self.value_per_kw_month_spin.setValue(5.0)
+        self.value_per_kw_month_spin.setPrefix("$")
+        self.value_per_kw_month_spin.setSuffix(" /kW-mo")
+        self.value_per_kw_month_spin.setDecimals(2)
+        self.value_per_kw_month_spin.setEnabled(False)
+        layout.addLayout(self._row("Value per kW-Month:", self.value_per_kw_month_spin))
+
+        return group
+
+    def _toggle_reliability(self, state):
+        enabled = state == Qt.CheckState.Checked.value
+        self.outage_hours_spin.setEnabled(enabled)
+        self.customer_cost_spin.setEnabled(enabled)
+        self.backup_pct_spin.setEnabled(enabled)
+
+    def _toggle_safety(self, state):
+        enabled = state == Qt.CheckState.Checked.value
+        self.incident_prob_spin.setEnabled(enabled)
+        self.incident_cost_spin.setEnabled(enabled)
+        self.risk_reduction_spin.setEnabled(enabled)
+
+    def _toggle_speed(self, state):
+        enabled = state == Qt.CheckState.Checked.value
+        self.months_saved_spin.setEnabled(enabled)
+        self.value_per_kw_month_spin.setEnabled(enabled)
+
     # --- Helper Methods ---
 
     @staticmethod
@@ -519,6 +663,10 @@ class InputFormWidget(QWidget):
         self.itc_adders_spin.setValue(c.itc_adders * 100)
         self._update_total_itc()
 
+        # Bulk Discount
+        self.bulk_discount_spin.setValue(c.bulk_discount_rate * 100)
+        self.bulk_threshold_spin.setValue(c.bulk_discount_threshold_mwh)
+
         # Financing
         if project.financing:
             f = project.financing
@@ -528,6 +676,24 @@ class InputFormWidget(QWidget):
             self.cost_of_equity_spin.setValue(f.cost_of_equity * 100)
             self.tax_rate_spin.setValue(f.tax_rate * 100)
             self._update_wacc()
+
+        # Special Benefits
+        if project.special_benefits:
+            sb = project.special_benefits
+            # Reliability
+            self.reliability_check.setChecked(sb.reliability_enabled)
+            self.outage_hours_spin.setValue(sb.outage_hours_per_year)
+            self.customer_cost_spin.setValue(sb.customer_cost_per_kwh)
+            self.backup_pct_spin.setValue(sb.backup_capacity_pct * 100)
+            # Safety
+            self.safety_check.setChecked(sb.safety_enabled)
+            self.incident_prob_spin.setValue(sb.incident_probability)
+            self.incident_cost_spin.setValue(sb.incident_cost)
+            self.risk_reduction_spin.setValue(sb.risk_reduction_factor * 100)
+            # Speed-to-Serve
+            self.speed_check.setChecked(sb.speed_enabled)
+            self.months_saved_spin.setValue(sb.months_saved)
+            self.value_per_kw_month_spin.setValue(sb.value_per_kw_month)
 
         # Benefits table
         self.benefits_table.setRowCount(0)
@@ -588,6 +754,8 @@ class InputFormWidget(QWidget):
             property_tax_pct=self.property_tax_spin.value() / 100,
             itc_percent=self.itc_base_spin.value() / 100,
             itc_adders=self.itc_adders_spin.value() / 100,
+            bulk_discount_rate=self.bulk_discount_spin.value() / 100,
+            bulk_discount_threshold_mwh=self.bulk_threshold_spin.value(),
         )
 
         financing = FinancingInputs(
@@ -626,11 +794,27 @@ class InputFormWidget(QWidget):
         if lib_name == "-- Select Library --":
             lib_name = ""
 
+        # Build special benefits
+        special_benefits = SpecialBenefitInputs(
+            reliability_enabled=self.reliability_check.isChecked(),
+            outage_hours_per_year=self.outage_hours_spin.value(),
+            customer_cost_per_kwh=self.customer_cost_spin.value(),
+            backup_capacity_pct=self.backup_pct_spin.value() / 100,
+            safety_enabled=self.safety_check.isChecked(),
+            incident_probability=self.incident_prob_spin.value(),
+            incident_cost=self.incident_cost_spin.value(),
+            risk_reduction_factor=self.risk_reduction_spin.value() / 100,
+            speed_enabled=self.speed_check.isChecked(),
+            months_saved=self.months_saved_spin.value(),
+            value_per_kw_month=self.value_per_kw_month_spin.value(),
+        )
+
         return Project(
             basics=basics,
             technology=technology,
             costs=costs,
             financing=financing,
             benefits=benefits,
+            special_benefits=special_benefits,
             assumption_library=lib_name,
         )

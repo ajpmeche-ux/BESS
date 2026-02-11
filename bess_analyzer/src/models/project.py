@@ -189,6 +189,10 @@ class CostInputs:
     # End of life value
     residual_value_pct: float = 0.10  # 10% residual value at end of analysis
 
+    # Bulk discount for fleet purchases
+    bulk_discount_rate: float = 0.0  # e.g., 0.10 = 10% discount on all costs
+    bulk_discount_threshold_mwh: float = 0.0  # Minimum capacity to trigger discount (0 = disabled)
+
     def __post_init__(self):
         if self.capex_per_kwh < 0:
             raise ValueError(f"capex_per_kwh must be >= 0, got {self.capex_per_kwh}")
@@ -202,6 +206,10 @@ class CostInputs:
             raise ValueError(f"charging_cost_per_mwh must be >= 0, got {self.charging_cost_per_mwh}")
         if not 0 <= self.residual_value_pct <= 0.50:
             raise ValueError(f"residual_value_pct must be 0-0.50, got {self.residual_value_pct}")
+        if not 0 <= self.bulk_discount_rate <= 0.30:
+            raise ValueError(f"bulk_discount_rate must be 0-0.30, got {self.bulk_discount_rate}")
+        if self.bulk_discount_threshold_mwh < 0:
+            raise ValueError(f"bulk_discount_threshold_mwh must be >= 0, got {self.bulk_discount_threshold_mwh}")
 
     def get_augmentation_cost(self, years_from_base: int) -> float:
         """Calculate augmentation cost adjusted for learning curve.
@@ -248,6 +256,8 @@ class CostInputs:
             "property_tax_pct": self.property_tax_pct,
             "charging_cost_per_mwh": self.charging_cost_per_mwh,
             "residual_value_pct": self.residual_value_pct,
+            "bulk_discount_rate": self.bulk_discount_rate,
+            "bulk_discount_threshold_mwh": self.bulk_discount_threshold_mwh,
         }
 
     @classmethod
@@ -265,6 +275,8 @@ class CostInputs:
         data.setdefault("property_tax_pct", 0.01)
         data.setdefault("charging_cost_per_mwh", 30.0)
         data.setdefault("residual_value_pct", 0.10)
+        data.setdefault("bulk_discount_rate", 0.0)
+        data.setdefault("bulk_discount_threshold_mwh", 0.0)
         return cls(**data)
 
 
@@ -375,6 +387,124 @@ class BenefitStream:
 
 
 @dataclass
+class SpecialBenefitInputs:
+    """Custom inputs for formula-based benefit calculations.
+
+    These benefits have different calculation methods than standard
+    $/kW-year benefits. Each requires specific parameters.
+
+    Reliability Benefits (Avoided Outage Cost):
+        Based on customer interruption costs and expected outage hours.
+        Formula: outage_hours × customer_cost_per_kwh × capacity_mwh × 1000 × backup_pct
+
+    Safety Benefits (Avoided Incident Cost):
+        Based on probability of incidents and associated costs.
+        Formula: incident_probability × incident_cost × risk_reduction_factor
+
+    Speed-to-Serve Benefits (Faster Deployment Value):
+        One-time benefit for faster deployment compared to alternatives.
+        Formula: months_saved × value_per_kw_month × capacity_kw
+    """
+
+    # Reliability Benefits (Avoided Outage Cost)
+    reliability_enabled: bool = False
+    outage_hours_per_year: float = 4.0  # Expected outage hours mitigated per year
+    customer_cost_per_kwh: float = 10.0  # Value of lost load ($/kWh)
+    backup_capacity_pct: float = 0.50  # Portion of capacity providing backup (0-1)
+
+    # Safety Benefits (Avoided Incident Cost)
+    safety_enabled: bool = False
+    incident_probability: float = 0.001  # Annual probability of safety incident
+    incident_cost: float = 1_000_000.0  # Cost per incident ($)
+    risk_reduction_factor: float = 0.50  # Risk reduction from BESS (0-1)
+
+    # Speed-to-Serve Benefits (One-time, not annual)
+    speed_enabled: bool = False
+    months_saved: int = 24  # Months faster than alternative (e.g., peaker plant)
+    value_per_kw_month: float = 5.0  # $/kW-month value of early capacity
+
+    def __post_init__(self):
+        if not 0 <= self.backup_capacity_pct <= 1.0:
+            raise ValueError(f"backup_capacity_pct must be 0-1.0, got {self.backup_capacity_pct}")
+        if not 0 <= self.risk_reduction_factor <= 1.0:
+            raise ValueError(f"risk_reduction_factor must be 0-1.0, got {self.risk_reduction_factor}")
+        if self.months_saved < 0:
+            raise ValueError(f"months_saved must be >= 0, got {self.months_saved}")
+        if self.outage_hours_per_year < 0:
+            raise ValueError(f"outage_hours_per_year must be >= 0, got {self.outage_hours_per_year}")
+        if self.customer_cost_per_kwh < 0:
+            raise ValueError(f"customer_cost_per_kwh must be >= 0, got {self.customer_cost_per_kwh}")
+
+    def calculate_reliability_annual(self, capacity_mwh: float) -> float:
+        """Calculate annual reliability benefit value.
+
+        Args:
+            capacity_mwh: Project energy capacity in MWh.
+
+        Returns:
+            Annual reliability benefit in $.
+        """
+        if not self.reliability_enabled:
+            return 0.0
+        # Annual Value = outage_hours × customer_cost × capacity_kWh × backup_pct
+        return (self.outage_hours_per_year * self.customer_cost_per_kwh *
+                capacity_mwh * 1000 * self.backup_capacity_pct)
+
+    def calculate_safety_annual(self, capacity_mw: float) -> float:
+        """Calculate annual safety benefit value.
+
+        Args:
+            capacity_mw: Project power capacity in MW (used as scaling factor).
+
+        Returns:
+            Annual safety benefit in $.
+        """
+        if not self.safety_enabled:
+            return 0.0
+        # Annual Value = incident_prob × incident_cost × risk_reduction
+        # Scaled by capacity as a proxy for risk exposure
+        capacity_factor = capacity_mw / 100.0  # Normalize to 100 MW baseline
+        return (self.incident_probability * self.incident_cost *
+                self.risk_reduction_factor * capacity_factor)
+
+    def calculate_speed_onetime(self, capacity_kw: float) -> float:
+        """Calculate one-time speed-to-serve benefit (applied in Year 1).
+
+        Args:
+            capacity_kw: Project power capacity in kW.
+
+        Returns:
+            One-time speed benefit in $.
+        """
+        if not self.speed_enabled:
+            return 0.0
+        # One-time = months_saved × value_per_kw_month × capacity_kw
+        return self.months_saved * self.value_per_kw_month * capacity_kw
+
+    def to_dict(self) -> dict:
+        return {
+            "reliability_enabled": self.reliability_enabled,
+            "outage_hours_per_year": self.outage_hours_per_year,
+            "customer_cost_per_kwh": self.customer_cost_per_kwh,
+            "backup_capacity_pct": self.backup_capacity_pct,
+            "safety_enabled": self.safety_enabled,
+            "incident_probability": self.incident_probability,
+            "incident_cost": self.incident_cost,
+            "risk_reduction_factor": self.risk_reduction_factor,
+            "speed_enabled": self.speed_enabled,
+            "months_saved": self.months_saved,
+            "value_per_kw_month": self.value_per_kw_month,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SpecialBenefitInputs":
+        # Only include fields that exist in the dataclass
+        valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        filtered = {k: v for k, v in data.items() if k in valid_fields}
+        return cls(**filtered)
+
+
+@dataclass
 class FinancialResults:
     """Calculated financial metrics from project economics.
 
@@ -437,6 +567,7 @@ class Project:
         costs: Cost input parameters.
         financing: Project financing structure (optional).
         benefits: List of benefit/revenue streams.
+        special_benefits: Formula-based benefits (reliability, safety, speed) (optional).
         results: Calculated financial results (populated after analysis).
         assumption_library: Name of loaded assumption library, if any.
         library_version: Version of loaded assumption library, if any.
@@ -447,6 +578,7 @@ class Project:
     costs: CostInputs = field(default_factory=CostInputs)
     financing: Optional[FinancingInputs] = None
     benefits: List[BenefitStream] = field(default_factory=list)
+    special_benefits: Optional[SpecialBenefitInputs] = None
     results: Optional[FinancialResults] = None
     assumption_library: str = ""
     library_version: str = ""
@@ -464,6 +596,7 @@ class Project:
             "costs": self.costs.to_dict(),
             "financing": self.financing.to_dict() if self.financing else None,
             "benefits": [b.to_dict() for b in self.benefits],
+            "special_benefits": self.special_benefits.to_dict() if self.special_benefits else None,
             "results": self.results.to_dict() if self.results else None,
             "assumption_library": self.assumption_library,
             "library_version": self.library_version,
@@ -472,12 +605,14 @@ class Project:
     @classmethod
     def from_dict(cls, data: dict) -> "Project":
         financing_data = data.get("financing")
+        special_benefits_data = data.get("special_benefits")
         return cls(
             basics=ProjectBasics.from_dict(data["basics"]),
             technology=TechnologySpecs.from_dict(data["technology"]),
             costs=CostInputs.from_dict(data["costs"]),
             financing=FinancingInputs.from_dict(financing_data) if financing_data else None,
             benefits=[BenefitStream.from_dict(b) for b in data.get("benefits", [])],
+            special_benefits=SpecialBenefitInputs.from_dict(special_benefits_data) if special_benefits_data else None,
             results=FinancialResults.from_dict(data["results"]) if data.get("results") else None,
             assumption_library=data.get("assumption_library", ""),
             library_version=data.get("library_version", ""),
