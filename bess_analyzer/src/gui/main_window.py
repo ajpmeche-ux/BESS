@@ -23,7 +23,7 @@ from src.data.validators import validate_project
 from src.gui.input_forms import InputFormWidget
 from src.gui.results_display import ResultsWidget
 from src.gui.sensitivity_widget import SensitivityWidget
-from src.models.calculations import calculate_project_economics
+from src.models.calculations import calculate_project_economics, calculate_uos_analysis
 from src.models.project import Project
 from src.reports.executive import generate_executive_summary
 
@@ -191,14 +191,26 @@ class MainWindow(QMainWindow):
             self._current_results = results
             project.results = results
 
+            # Run UOS analysis if enabled
+            uos_results = None
+            if project.uos_inputs and project.uos_inputs.enabled:
+                uos_results = calculate_uos_analysis(project)
+
             self.results_widget.display_results(project, results)
             self.sensitivity_widget.display_sensitivity(project, results)
             self.tabs.setCurrentIndex(1)
             self.report_btn.setEnabled(True)
             self.excel_btn.setEnabled(True)
-            self.statusBar().showMessage(
-                f"Analysis complete. BCR: {results.bcr:.2f} | NPV: ${results.npv / 1e6:,.1f}M"
-            )
+
+            status_msg = f"Analysis complete. BCR: {results.bcr:.2f} | NPV: ${results.npv / 1e6:,.1f}M"
+            if uos_results:
+                rb = uos_results.get("rate_base_results")
+                sod = uos_results.get("sod_result")
+                if rb:
+                    status_msg += f" | Levelized RR: ${rb.levelized_revenue_requirement / 1e6:,.1f}M/yr"
+                if sod:
+                    status_msg += f" | SOD: {'PASS' if sod.feasible else 'FAIL'}"
+            self.statusBar().showMessage(status_msg)
         except Exception as e:
             QMessageBox.critical(self, "Calculation Error", f"Error during calculation:\n{e}")
 

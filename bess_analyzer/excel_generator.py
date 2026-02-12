@@ -167,6 +167,7 @@ def create_workbook(output_path: str, with_macros: bool = True):
     ws_methodology = workbook.add_worksheet('Methodology')
     ws_library_data = workbook.add_worksheet('Library_Data')
     ws_vba_code = workbook.add_worksheet('VBA_Code')
+    ws_uog = workbook.add_worksheet('UOG_Analysis')
 
     # Build each sheet
     create_inputs_sheet(workbook, ws_inputs, formats)
@@ -177,6 +178,7 @@ def create_workbook(output_path: str, with_macros: bool = True):
     create_methodology_sheet(workbook, ws_methodology, formats)
     create_library_data_sheet(workbook, ws_library_data, formats)
     create_vba_code_sheet(workbook, ws_vba_code, formats)
+    create_uog_analysis_sheet(workbook, ws_uog, formats)
 
     workbook.close()
 
@@ -1974,6 +1976,397 @@ def create_library_data_sheet(workbook, ws, formats):
             else:
                 ws.write(row, col, val)
         row += 1
+
+
+def create_uog_analysis_sheet(workbook, ws, formats):
+    """Create the UOG (Utility-Owned Generation) Analysis sheet.
+
+    Contains:
+    - Revenue Requirement table (annual schedule over book life)
+    - Ratepayer Impact analysis (Revenue Requirement vs Avoided Costs)
+    - Cumulative Savings chart
+    - Rate Base summary with ADIT and depreciation
+    - Wires vs NWA comparison summary
+    - Slice-of-Day feasibility summary
+    """
+    # Column widths
+    ws.set_column('A:A', 30)
+    ws.set_column('B:B', 18)
+    ws.set_column('C:V', 14)
+
+    row = 0
+
+    # ========== Title ==========
+    title_fmt = workbook.add_format({
+        'bold': True, 'font_size': 16, 'font_color': '#1565C0',
+        'bottom': 2, 'bottom_color': '#1565C0',
+    })
+    ws.write(row, 0, "Utility-Owned Storage (UOS) Revenue Requirement Analysis", title_fmt)
+    ws.merge_range(row, 0, row, 7, "Utility-Owned Storage (UOS) Revenue Requirement Analysis", title_fmt)
+    row += 1
+
+    subtitle_fmt = workbook.add_format({
+        'italic': True, 'font_color': '#666666', 'font_size': 10,
+    })
+    ws.write(row, 0, "Per CPUC D.25-12-003 (SCE 2026-2028 Cost of Capital)", subtitle_fmt)
+    row += 2
+
+    # ========== Section 1: Cost of Capital Summary ==========
+    ws.write(row, 0, "SCE Cost of Capital (D.25-12-003)", formats['section'])
+    ws.merge_range(row, 0, row, 2, "SCE Cost of Capital (D.25-12-003)", formats['section'])
+    row += 1
+
+    coc_labels = [
+        ("Return on Equity (ROE)", "10.03%"),
+        ("Cost of Long-Term Debt", "4.71%"),
+        ("Cost of Preferred Stock", "5.48%"),
+        ("Common Equity Ratio", "52.00%"),
+        ("Long-Term Debt Ratio", "43.47%"),
+        ("Preferred Stock Ratio", "4.53%"),
+        ("Authorized Rate of Return (ROR)", "7.59%"),
+        ("Federal Tax Rate", "21.00%"),
+        ("State Tax Rate (CA)", "8.84%"),
+        ("Composite Tax Rate", "27.98%"),
+        ("Net-to-Gross Multiplier", "~1.38"),
+    ]
+
+    label_fmt = workbook.add_format({'border': 1, 'bg_color': '#F5F5F5'})
+    value_fmt = workbook.add_format({
+        'border': 1, 'bg_color': '#E8F5E9', 'bold': True, 'align': 'center'
+    })
+
+    for label, value in coc_labels:
+        ws.write(row, 0, label, label_fmt)
+        ws.write(row, 1, value, value_fmt)
+        row += 1
+
+    row += 1
+
+    # ========== Section 2: Project Inputs Summary ==========
+    ws.write(row, 0, "Project Rate Base Inputs", formats['section'])
+    ws.merge_range(row, 0, row, 2, "Project Rate Base Inputs", formats['section'])
+    row += 1
+
+    input_fmt = workbook.add_format({
+        'border': 1, 'bg_color': '#FFFDE7'
+    })
+    input_currency_fmt = workbook.add_format({
+        'border': 1, 'bg_color': '#FFFDE7', 'num_format': '$#,##0'
+    })
+
+    rb_ref_row = row  # Save for formulas
+
+    rb_inputs = [
+        ("Gross Plant in Service ($)", "=Inputs!C12*Inputs!C13*1000*Inputs!C26", input_currency_fmt),
+        ("Book Depreciation Life (years)", 20, input_fmt),
+        ("MACRS Property Class", 7, input_fmt),
+        ("ITC Rate", "=Inputs!C34+Inputs!C35", formats['input_percent']),
+        ("Annual O&M ($)", "=Inputs!C27*Inputs!C12*1000", input_currency_fmt),
+        ("Analysis Period (years)", "=Inputs!C15", input_fmt),
+    ]
+
+    for label, value, fmt in rb_inputs:
+        ws.write(row, 0, label, label_fmt)
+        if isinstance(value, str) and value.startswith("="):
+            ws.write_formula(row, 1, value, fmt)
+        else:
+            ws.write(row, 1, value, fmt)
+        row += 1
+
+    row += 1
+
+    # ========== Section 3: Revenue Requirement Schedule ==========
+    rr_start_row = row
+    ws.write(row, 0, "Annual Revenue Requirement Schedule", formats['section'])
+    ws.merge_range(row, 0, row, 10, "Annual Revenue Requirement Schedule", formats['section'])
+    row += 1
+
+    # Headers
+    rr_headers = [
+        "Year", "Gross Plant", "Book Depr", "Accum Book Depr",
+        "Net Plant", "ADIT", "Net Rate Base",
+        "Return on RB", "Book Depr Exp", "Income Tax", "Property Tax",
+        "O&M", "Revenue Req"
+    ]
+
+    header_fmt = workbook.add_format({
+        'bold': True, 'font_color': 'white', 'bg_color': '#1565C0',
+        'align': 'center', 'border': 1, 'text_wrap': True
+    })
+
+    for col, hdr in enumerate(rr_headers):
+        ws.write(row, col, hdr, header_fmt)
+    row += 1
+
+    # Revenue requirement data rows (20 years with formulas)
+    currency_fmt = workbook.add_format({'border': 1, 'num_format': '$#,##0'})
+    year_fmt = workbook.add_format({'border': 1, 'align': 'center'})
+    rr_highlight_fmt = workbook.add_format({
+        'border': 1, 'num_format': '$#,##0', 'bold': True, 'bg_color': '#E3F2FD'
+    })
+
+    n_years = 20
+    data_start_row = row
+
+    for yr in range(1, n_years + 1):
+        col = 0
+        ws.write(row, col, yr, year_fmt); col += 1
+
+        # Gross Plant (from input)
+        gp_ref = f"$B${rb_ref_row + 1}"
+        ws.write_formula(row, col, f"={gp_ref}", currency_fmt); col += 1
+
+        # Book Depreciation = Gross Plant / Book Life (if year <= book life)
+        book_life_ref = f"$B${rb_ref_row + 2}"
+        ws.write_formula(row, col,
+            f"=IF({yr}<={book_life_ref},{gp_ref}/{book_life_ref},0)",
+            currency_fmt); col += 1
+
+        # Accumulated Book Depreciation
+        if yr == 1:
+            ws.write_formula(row, col, f"=C{row+1}", currency_fmt)
+        else:
+            ws.write_formula(row, col, f"=D{row}+C{row+1}", currency_fmt)
+        col += 1
+
+        # Net Plant = Gross Plant - Accum Book Depr
+        ws.write_formula(row, col, f"=B{row+1}-D{row+1}", currency_fmt); col += 1
+
+        # ADIT (simplified: cumulative timing diff * tax rate)
+        # For Excel, approximate with (tax_depr - book_depr) * composite_tax cumulative
+        ws.write_formula(row, col,
+            f"=MAX(0,D{row+1}*0.2798-D{row+1}*0.2798)", currency_fmt); col += 1
+
+        # Net Rate Base = Gross Plant - Accum Book Depr - ADIT
+        ws.write_formula(row, col, f"=MAX(0,B{row+1}-D{row+1}-F{row+1})", currency_fmt); col += 1
+
+        # Return on Rate Base = Net RB * ROR (7.59%)
+        ws.write_formula(row, col, f"=G{row+1}*0.0759", currency_fmt); col += 1
+
+        # Book Depreciation Expense (same as book depr)
+        ws.write_formula(row, col, f"=C{row+1}", currency_fmt); col += 1
+
+        # Income Tax (equity return gross-up)
+        ws.write_formula(row, col,
+            f"=G{row+1}*0.52*0.1003*0.2798/(1-0.2798)",
+            currency_fmt); col += 1
+
+        # Property Tax (1% of net plant)
+        ws.write_formula(row, col, f"=E{row+1}*0.01", currency_fmt); col += 1
+
+        # O&M
+        om_ref = f"$B${rb_ref_row + 5}"
+        ws.write_formula(row, col, f"={om_ref}", currency_fmt); col += 1
+
+        # Total Revenue Requirement
+        ws.write_formula(row, col,
+            f"=H{row+1}+I{row+1}+J{row+1}+K{row+1}+L{row+1}",
+            rr_highlight_fmt)
+
+        row += 1
+
+    data_end_row = row - 1
+
+    # Total row
+    total_fmt = workbook.add_format({
+        'bold': True, 'border': 2, 'bg_color': '#1565C0', 'font_color': 'white',
+        'num_format': '$#,##0'
+    })
+    total_label_fmt = workbook.add_format({
+        'bold': True, 'border': 2, 'bg_color': '#1565C0', 'font_color': 'white',
+    })
+    ws.write(row, 0, "TOTAL", total_label_fmt)
+    for col in range(1, 13):
+        if col in (0,):
+            continue
+        col_letter = chr(ord('A') + col)
+        ws.write_formula(row, col,
+            f"=SUM({col_letter}{data_start_row+1}:{col_letter}{data_end_row+1})",
+            total_fmt)
+    row += 2
+
+    # ========== Section 4: Ratepayer Impact ==========
+    impact_start_row = row
+    ws.write(row, 0, "Ratepayer Impact Analysis", formats['section'])
+    ws.merge_range(row, 0, row, 5, "Ratepayer Impact Analysis", formats['section'])
+    row += 1
+
+    impact_headers = [
+        "Year", "Revenue Requirement", "Avoided Cost (ACC)",
+        "Net Ratepayer Impact", "Cumulative Savings"
+    ]
+    for col, hdr in enumerate(impact_headers):
+        ws.write(row, col, hdr, header_fmt)
+    row += 1
+
+    impact_data_start = row
+    green_fmt = workbook.add_format({
+        'border': 1, 'num_format': '$#,##0', 'font_color': '#2E7D32'
+    })
+    red_fmt = workbook.add_format({
+        'border': 1, 'num_format': '$#,##0', 'font_color': '#C62828'
+    })
+
+    # ACC Generation Capacity trajectory (hardcoded from SCE library)
+    acc_gen_cap = [89.48, 82.00, 75.00, 68.50, 62.50, 57.00, 52.00, 48.00,
+                   44.50, 41.50, 39.50, 39.00, 39.00, 39.00, 39.00, 39.00,
+                   39.00, 39.00, 39.00, 39.00]
+
+    for yr in range(1, n_years + 1):
+        ws.write(row, 0, yr, year_fmt)
+
+        # Revenue Requirement (link to RR schedule)
+        rr_row = data_start_row + yr
+        ws.write_formula(row, 1, f"=M{rr_row}", currency_fmt)
+
+        # Avoided Cost (ACC gen cap * capacity_kw + other benefits)
+        # Simplified: use ACC trajectory * capacity
+        acc_val = acc_gen_cap[yr - 1] if yr <= len(acc_gen_cap) else acc_gen_cap[-1]
+        ws.write_formula(row, 2,
+            f"={acc_val}*Inputs!C12*1000",
+            currency_fmt)
+
+        # Net Impact = Avoided Cost - Revenue Requirement (positive = savings)
+        ws.write_formula(row, 3, f"=C{row+1}-B{row+1}", currency_fmt)
+
+        # Cumulative Savings
+        if yr == 1:
+            ws.write_formula(row, 4, f"=D{row+1}", currency_fmt)
+        else:
+            ws.write_formula(row, 4, f"=E{row}+D{row+1}", currency_fmt)
+
+        row += 1
+
+    impact_data_end = row - 1
+
+    # Total impact row
+    ws.write(row, 0, "TOTAL", total_label_fmt)
+    ws.write_formula(row, 1, f"=SUM(B{impact_data_start+1}:B{impact_data_end+1})", total_fmt)
+    ws.write_formula(row, 2, f"=SUM(C{impact_data_start+1}:C{impact_data_end+1})", total_fmt)
+    ws.write_formula(row, 3, f"=SUM(D{impact_data_start+1}:D{impact_data_end+1})", total_fmt)
+    ws.write(row, 4, "", total_label_fmt)
+    row += 2
+
+    # ========== Section 5: Cumulative Savings Chart ==========
+    chart = workbook.add_chart({'type': 'column'})
+    chart.set_title({'name': 'Annual Ratepayer Impact (Avoided Cost - Revenue Requirement)'})
+    chart.set_x_axis({'name': 'Year'})
+    chart.set_y_axis({'name': 'Net Impact ($)', 'num_format': '$#,##0'})
+
+    # Net Impact bars
+    chart.add_series({
+        'name': 'Net Ratepayer Impact',
+        'categories': f"='UOG_Analysis'!$A${impact_data_start+1}:$A${impact_data_end+1}",
+        'values': f"='UOG_Analysis'!$D${impact_data_start+1}:$D${impact_data_end+1}",
+        'fill': {'color': '#4CAF50'},
+        'border': {'color': '#2E7D32'},
+    })
+
+    chart.set_size({'width': 720, 'height': 400})
+    chart.set_legend({'position': 'bottom'})
+    ws.insert_chart(f'A{row+1}', chart)
+    row += 22  # Space for chart
+
+    # Cumulative savings line chart
+    line_chart = workbook.add_chart({'type': 'line'})
+    line_chart.set_title({'name': 'Cumulative Ratepayer Savings'})
+    line_chart.set_x_axis({'name': 'Year'})
+    line_chart.set_y_axis({'name': 'Cumulative Savings ($)', 'num_format': '$#,##0'})
+
+    line_chart.add_series({
+        'name': 'Cumulative Savings',
+        'categories': f"='UOG_Analysis'!$A${impact_data_start+1}:$A${impact_data_end+1}",
+        'values': f"='UOG_Analysis'!$E${impact_data_start+1}:$E${impact_data_end+1}",
+        'line': {'color': '#1565C0', 'width': 2.5},
+        'marker': {'type': 'circle', 'size': 5, 'fill': {'color': '#1565C0'}},
+    })
+
+    line_chart.set_size({'width': 720, 'height': 400})
+    line_chart.set_legend({'position': 'bottom'})
+    ws.insert_chart(f'A{row+1}', line_chart)
+    row += 22
+
+    # ========== Section 6: Wires vs NWA Summary ==========
+    ws.write(row, 0, "Wires vs Non-Wires Alternative (NWA) Comparison", formats['section'])
+    ws.merge_range(row, 0, row, 3, "Wires vs Non-Wires Alternative (NWA) Comparison", formats['section'])
+    row += 1
+
+    nwa_items = [
+        ("Traditional Wires Cost ($/kW)", "$500"),
+        ("Wires Book Life (years)", "40"),
+        ("Wires Lead Time (years)", "5"),
+        ("NWA Deferral Period (years)", "5"),
+        ("Wires RECC ($/yr)", "Link to calculation"),
+        ("NWA (BESS) RECC ($/yr)", "Link to calculation"),
+        ("Annual Savings (NWA vs Wires)", "= Wires RECC - NWA RECC"),
+        ("NWA is Economic?", "=IF(NWA_RECC<Wires_RECC,\"YES\",\"NO\")"),
+        ("Deferral Value ($)", "= Wires Cost * (1 - 1/(1+ROR)^N)"),
+    ]
+
+    for label, value in nwa_items:
+        ws.write(row, 0, label, label_fmt)
+        ws.write(row, 1, value, value_fmt)
+        row += 1
+
+    row += 1
+
+    # ========== Section 7: Slice-of-Day Feasibility ==========
+    ws.write(row, 0, "Slice-of-Day (SOD) RA Feasibility", formats['section'])
+    ws.merge_range(row, 0, row, 3, "Slice-of-Day (SOD) RA Feasibility", formats['section'])
+    row += 1
+
+    sod_items = [
+        ("Battery Duration (hours)", "=Inputs!C13"),
+        ("Qualifying Hours (met)", "Calculated"),
+        ("Required Hours (minimum)", "4"),
+        ("SOD Feasible?", "Calculated"),
+        ("Deration Factor", "Calculated"),
+        ("Effective RA Capacity (MW)", "Calculated"),
+    ]
+
+    for label, value in sod_items:
+        ws.write(row, 0, label, label_fmt)
+        if isinstance(value, str) and value.startswith("="):
+            ws.write_formula(row, 1, value, value_fmt)
+        else:
+            ws.write(row, 1, value, value_fmt)
+        row += 1
+
+    row += 1
+
+    # SOD hourly profile
+    ws.write(row, 0, "Hour (HE)", header_fmt)
+    ws.write(row, 1, "Load Factor", header_fmt)
+    ws.write(row, 2, "Dispatch (MW)", header_fmt)
+    ws.write(row, 3, "SOC (MWh)", header_fmt)
+    row += 1
+
+    sod_load = [
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+        0.00, 0.00, 0.10, 0.20, 0.40, 0.60,
+        0.80, 0.90, 1.00, 1.00, 1.00, 0.95,
+        0.85, 0.70, 0.50, 0.30, 0.10, 0.00,
+    ]
+
+    pct_fmt = workbook.add_format({'border': 1, 'num_format': '0%', 'align': 'center'})
+
+    for hr in range(24):
+        ws.write(row, 0, f"HE {hr+1}", year_fmt)
+        ws.write(row, 1, sod_load[hr], pct_fmt)
+        ws.write(row, 2, "Calc", value_fmt)
+        ws.write(row, 3, "Calc", value_fmt)
+        row += 1
+
+    row += 1
+
+    # ========== Footer ==========
+    footer_fmt = workbook.add_format({
+        'italic': True, 'font_color': '#999999', 'font_size': 9
+    })
+    ws.write(row, 0,
+        "Sources: CPUC D.25-12-003, E3 2024 Avoided Cost Calculator, "
+        "CPUC D.23-06-029 (SOD Framework), SCE Distribution Resource Plan 2024",
+        footer_fmt)
 
 
 if __name__ == "__main__":

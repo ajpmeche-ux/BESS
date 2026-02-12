@@ -1,0 +1,238 @@
+{
+  "name": "SCE Utility-Owned Storage 2026",
+  "version": "2026.1",
+  "source": "Southern California Edison / CPUC",
+  "url": "https://www.cpuc.ca.gov/industries-and-topics/electrical-energy",
+  "date_published": "2025-12-15",
+
+  "cost_of_capital": {
+    "roe": 0.1003,
+    "cost_of_debt": 0.0471,
+    "cost_of_preferred": 0.0548,
+    "equity_ratio": 0.5200,
+    "debt_ratio": 0.4347,
+    "preferred_ratio": 0.0453,
+    "ror": 0.0759,
+    "federal_tax_rate": 0.21,
+    "state_tax_rate": 0.0884,
+    "property_tax_rate": 0.01,
+    "description": "Per CPUC Decision D.25-12-003, effective 2026-2028",
+    "citation": "CPUC Decision D.25-12-003. SCE 2026 Cost of Capital. December 2025."
+  },
+
+  "rate_base": {
+    "book_life_years": 20,
+    "macrs_class": 7,
+    "itc_rate": 0.30,
+    "itc_basis_reduction": true,
+    "bonus_depreciation_pct": 0.0,
+    "description": "BESS typically 7-year MACRS, 20-year book life per SCE GRC"
+  },
+
+  "costs": {
+    "capex_per_kwh": 155,
+    "fom_per_kw_year": 26,
+    "vom_per_mwh": 0,
+    "augmentation_per_kwh": 52,
+    "decommissioning_per_kw": 12,
+    "itc_percent": 0.30,
+    "itc_adders": 0.10,
+    "interconnection_per_kw": 120,
+    "land_per_kw": 15,
+    "permitting_per_kw": 20,
+    "insurance_pct_of_capex": 0.005,
+    "property_tax_pct": 0.01,
+    "charging_cost_per_mwh": 25,
+    "residual_value_pct": 0.10,
+    "bulk_discount_rate": 0.0,
+    "bulk_discount_threshold_mwh": 0,
+    "learning_rate": 0.11,
+    "cost_base_year": 2024
+  },
+
+  "technology": {
+    "chemistry": "LFP",
+    "round_trip_efficiency": 0.85,
+    "degradation_rate_annual": 0.025,
+    "cycle_life": 6000,
+    "warranty_years": 10,
+    "augmentation_year": 12,
+    "cycles_per_day": 1.0
+  },
+
+  "financing": {
+    "debt_percent": 0.4347,
+    "interest_rate": 0.0471,
+    "loan_term_years": 20,
+    "cost_of_equity": 0.1003,
+    "tax_rate": 0.21,
+    "description": "SCE capital structure per D.25-12-003"
+  },
+
+  "avoided_costs": {
+    "description": "2024 Avoided Cost Calculator (ACC) values for SCE service territory",
+    "source": "E3 2024 Avoided Cost Calculator for CPUC",
+    "citation": "E3. 2024 Avoided Cost Calculator. Prepared for CPUC. Version 2a. October 2024.",
+
+    "generation_capacity": {
+      "description": "Avoided generation capacity cost ($/kW-year). Starts at $89.48 per ACC 2024, declines to ~$39/kW-yr as market saturates.",
+      "values_per_kw_year": [89.48, 82.00, 75.00, 68.50, 62.50, 57.00, 52.00, 48.00, 44.50, 41.50,
+                             39.50, 39.00, 39.00, 39.00, 39.00, 39.00, 39.00, 39.00, 39.00, 39.00],
+      "start_year": 2026
+    },
+
+    "distribution_capacity": {
+      "description": "Avoided distribution capacity cost ($/kW-year). Per ACC 2024 for SCE.",
+      "value_per_kw_year": 77.30,
+      "escalation_rate": 0.02,
+      "applies_to_nwa_only": true,
+      "citation": "E3 ACC 2024, SCE Distribution Planning Area Average"
+    },
+
+    "energy_value": {
+      "description": "Avoided energy cost ($/MWh) by time-of-use period. Weighted average across SCE TOU periods.",
+      "on_peak_per_mwh": 85.0,
+      "off_peak_per_mwh": 35.0,
+      "super_off_peak_per_mwh": 15.0,
+      "weighted_average_per_mwh": 55.0,
+      "escalation_rate": 0.025,
+      "citation": "E3 ACC 2024, SCE Energy Price Forecast"
+    },
+
+    "ghg_adder": {
+      "description": "Avoided GHG emissions value ($/ton CO2e)",
+      "value_per_ton": 52.0,
+      "escalation_rate": 0.03,
+      "emission_factor_tons_per_mwh": 0.35,
+      "citation": "CARB Cap-and-Trade Q4 2024 Settlement Price"
+    },
+
+    "ancillary_services": {
+      "description": "Avoided ancillary services cost ($/kW-year)",
+      "value_per_kw_year": 10.0,
+      "escalation_rate": 0.01,
+      "citation": "CAISO Ancillary Services Market Data 2024"
+    },
+
+    "transmission_capacity": {
+      "description": "Avoided transmission capacity cost ($/kW-year)",
+      "value_per_kw_year": 25.0,
+      "escalation_rate": 0.015,
+      "citation": "CAISO Transmission Plan 2024-2025"
+    }
+  },
+
+  "nwa_comparison": {
+    "description": "Default parameters for Non-Wires Alternative vs traditional wires comparison",
+    "traditional_wires_cost_per_kw": 500.0,
+    "wires_lead_time_years": 5,
+    "wires_book_life_years": 40,
+    "deferral_years": 5,
+    "incrementality_flag": true,
+    "citation": "SCE Distribution Resource Plan 2024"
+  },
+
+  "slice_of_day": {
+    "description": "Slice-of-Day RA capacity factors by hour for SCE territory (summer peak day)",
+    "hourly_capacity_factors": [
+      0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+      0.00, 0.00, 0.10, 0.20, 0.40, 0.60,
+      0.80, 0.90, 1.00, 1.00, 1.00, 0.95,
+      0.85, 0.70, 0.50, 0.30, 0.10, 0.00
+    ],
+    "min_qualifying_hours": 4,
+    "deration_threshold": 0.50,
+    "citation": "CPUC D.23-06-029, Slice-of-Day RA Framework"
+  },
+
+  "benefits": [
+    {
+      "name": "Resource Adequacy",
+      "annual_value_per_kw": 89.48,
+      "escalation": 0.0,
+      "use_acc_trajectory": true,
+      "description": "System RA value per ACC 2024 generation capacity trajectory",
+      "data_source": "E3 ACC 2024",
+      "citation": "E3. 2024 Avoided Cost Calculator. CPUC. October 2024.",
+      "category": "common"
+    },
+    {
+      "name": "Distribution Capacity",
+      "annual_value_per_kw": 77.30,
+      "escalation": 0.02,
+      "description": "Avoided distribution investment (NWA applications only)",
+      "data_source": "E3 ACC 2024, SCE DPA",
+      "citation": "E3. 2024 Avoided Cost Calculator. SCE Distribution. October 2024.",
+      "category": "nwa_specific"
+    },
+    {
+      "name": "Energy Arbitrage",
+      "annual_value_per_kw": 35,
+      "escalation": 0.025,
+      "description": "Day-ahead and real-time energy price arbitrage",
+      "data_source": "CAISO OASIS / E3 ACC",
+      "citation": "California ISO. OASIS Market Data, 2024 Annual Summary.",
+      "category": "common"
+    },
+    {
+      "name": "Ancillary Services",
+      "annual_value_per_kw": 10,
+      "escalation": 0.01,
+      "description": "Frequency regulation, spinning reserves, flexible ramping",
+      "data_source": "CAISO AS market",
+      "citation": "California ISO. Ancillary Services Annual Report 2024.",
+      "category": "common"
+    },
+    {
+      "name": "Transmission Deferral",
+      "annual_value_per_kw": 25,
+      "escalation": 0.015,
+      "description": "Avoided transmission infrastructure investment",
+      "data_source": "E3 ACC 2024",
+      "citation": "E3. 2024 Avoided Cost Calculator. Transmission. October 2024.",
+      "category": "common"
+    },
+    {
+      "name": "GHG Emissions Value",
+      "annual_value_per_kw": 18.20,
+      "escalation": 0.03,
+      "description": "Avoided CO2 emissions at $52/ton x 0.35 tons/MWh",
+      "data_source": "CARB Cap-and-Trade",
+      "citation": "California Air Resources Board. Cap-and-Trade Q4 2024.",
+      "category": "common"
+    },
+    {
+      "name": "Renewable Integration",
+      "annual_value_per_kw": 30,
+      "escalation": 0.025,
+      "description": "Avoided renewable curtailment value",
+      "data_source": "CAISO Renewables Reports",
+      "citation": "California ISO. Managing Oversupply Report. 2024.",
+      "category": "bess_specific"
+    }
+  ],
+
+  "special_benefits": {
+    "reliability": {
+      "enabled": true,
+      "outage_hours_per_year": 6.0,
+      "customer_cost_per_kwh": 12.0,
+      "backup_capacity_pct": 0.50,
+      "description": "Avoided outage costs from PSPS events and wildfire shutoffs",
+      "data_source": "CPUC PSPS Cost Analysis 2024"
+    },
+    "safety": {
+      "enabled": false,
+      "incident_probability": 0.0005,
+      "incident_cost": 750000,
+      "risk_reduction_factor": 0.30
+    },
+    "speed_to_serve": {
+      "enabled": false,
+      "months_saved": 24,
+      "value_per_kw_month": 6.0
+    }
+  },
+
+  "notes": "SCE Utility-Owned Storage assumptions for revenue requirement analysis. Cost of Capital per CPUC D.25-12-003 (2026-2028). Avoided costs from E3 2024 ACC Version 2a. Generation capacity trajectory reflects declining marginal value as storage penetration increases. Distribution capacity value applies only to NWA-qualifying projects. Slice-of-Day factors based on SCE summer peak load shape."
+}

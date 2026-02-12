@@ -19,7 +19,14 @@ from src.models.project import (
     ProjectBasics,
     SpecialBenefitInputs,
     TechnologySpecs,
+    UOSInputs,
 )
+from src.models.rate_base import CostOfCapital, RateBaseInputs, calculate_revenue_requirement
+from src.models.avoided_costs import AvoidedCosts
+from src.models.wires_comparison import (
+    WiresAlternative, NWAParameters, compare_wires_vs_nwa,
+)
+from src.models.sod_check import SODInputs, check_sod_feasibility
 
 
 def calculate_npv(cash_flows: List[float], discount_rate: float) -> float:
@@ -390,3 +397,141 @@ def calculate_project_economics(project: Project) -> FinancialResults:
         annual_benefits=annual_benefits,
         annual_net=annual_net,
     )
+
+
+def calculate_uos_analysis(project: Project) -> dict:
+    """Run Utility-Owned Storage (UOS) revenue requirement analysis.
+
+    Performs:
+    1. Rate Base / Revenue Requirement calculation
+    2. Avoided Cost (ACC) benefit stream
+    3. Wires vs NWA comparison
+    4. Slice-of-Day feasibility check
+    5. Ratepayer impact analysis
+
+    Args:
+        project: Project with uos_inputs populated.
+
+    Returns:
+        Dictionary with:
+            - rate_base_results: RateBaseResults
+            - avoided_costs_annual: List of annual avoided costs
+            - wires_comparison: ComparisonResult
+            - sod_result: SODResult
+            - ratepayer_impact: Annual net impact (avoided cost - revenue requirement)
+            - cumulative_savings: Cumulative ratepayer savings
+    """
+    uos = project.uos_inputs
+    if not uos or not uos.enabled:
+        return {}
+
+    basics = project.basics
+    tech = project.technology
+    costs = project.costs
+    n = basics.analysis_period_years
+    capacity_kw = basics.capacity_mw * 1000
+    capacity_kwh = basics.capacity_mwh * 1000
+
+    # --- Build Cost of Capital ---
+    coc = CostOfCapital(
+        roe=uos.roe,
+        cost_of_debt=uos.cost_of_debt,
+        cost_of_preferred=uos.cost_of_preferred,
+        equity_ratio=uos.equity_ratio,
+        debt_ratio=uos.debt_ratio,
+        preferred_ratio=uos.preferred_ratio,
+        ror=uos.ror,
+        federal_tax_rate=uos.federal_tax_rate,
+        state_tax_rate=uos.state_tax_rate,
+        property_tax_rate=uos.property_tax_rate,
+    )
+
+    # --- Gross Plant calculation ---
+    gross_plant = costs.capex_per_kwh * capacity_kwh
+    infra = (costs.interconnection_per_kw + costs.land_per_kw +
+             costs.permitting_per_kw) * capacity_kw
+    total_plant = gross_plant + infra
+
+    # Annual O&M
+    annual_om = costs.fom_per_kw_year * capacity_kw
+
+    # --- Revenue Requirement ---
+    rb_inputs = RateBaseInputs(
+        gross_plant=total_plant,
+        book_life_years=uos.book_life_years,
+        macrs_class=uos.macrs_class,
+        itc_rate=costs.itc_percent + costs.itc_adders,
+        itc_basis_reduction=True,
+        cost_of_capital=coc,
+        annual_om=annual_om,
+        analysis_years=n,
+        bonus_depreciation_pct=uos.bonus_depreciation_pct,
+    )
+    rb_results = calculate_revenue_requirement(rb_inputs)
+
+    # --- Avoided Costs (ACC) ---
+    acc = AvoidedCosts()  # Uses default SCE values
+    avoided_annual = acc.get_annual_avoided_costs(
+        capacity_kw=capacity_kw,
+        capacity_mwh=basics.capacity_mwh,
+        rte=tech.round_trip_efficiency,
+        degradation_rate=tech.degradation_rate_annual,
+        cycles_per_day=tech.cycles_per_day,
+        n_years=n,
+        include_distribution=False,
+    )
+
+    # --- Wires vs NWA Comparison ---
+    wires = WiresAlternative(
+        cost_per_kw=uos.wires_cost_per_kw,
+        capacity_kw=capacity_kw,
+        book_life_years=uos.wires_book_life,
+        lead_time_years=uos.wires_lead_time,
+        macrs_class=20,
+    )
+    nwa_params = NWAParameters(
+        deferral_years=uos.nwa_deferral_years,
+        incrementality_flag=uos.nwa_incrementality,
+        bess_gross_plant=total_plant,
+        bess_book_life_years=uos.book_life_years,
+        bess_macrs_class=uos.macrs_class,
+        bess_annual_om=annual_om,
+        bess_itc_rate=costs.itc_percent + costs.itc_adders,
+        avoided_cost_annual=sum(avoided_annual) / n if avoided_annual else 0.0,
+    )
+    wires_result = compare_wires_vs_nwa(wires, nwa_params, coc, n)
+
+    # --- Slice-of-Day Feasibility ---
+    sod_inputs = SODInputs(
+        capacity_mw=basics.capacity_mw,
+        duration_hours=basics.duration_hours,
+        round_trip_efficiency=tech.round_trip_efficiency,
+        degradation_rate=tech.degradation_rate_annual,
+        analysis_year=1,
+        min_qualifying_hours=uos.sod_min_hours,
+        deration_threshold=uos.sod_deration_threshold,
+    )
+    sod_result = check_sod_feasibility(sod_inputs)
+
+    # --- Ratepayer Impact ---
+    rr_annual = rb_results.get_annual_revenue_requirements()
+    ratepayer_impact = []
+    cumulative_savings = []
+    running = 0.0
+    for yr in range(n):
+        rr = rr_annual[yr] if yr < len(rr_annual) else 0.0
+        avoided = avoided_annual[yr] if yr < len(avoided_annual) else 0.0
+        net = avoided - rr  # positive = savings for ratepayers
+        ratepayer_impact.append(net)
+        running += net
+        cumulative_savings.append(running)
+
+    return {
+        "rate_base_results": rb_results,
+        "avoided_costs_annual": avoided_annual,
+        "wires_comparison": wires_result,
+        "sod_result": sod_result,
+        "ratepayer_impact": ratepayer_impact,
+        "cumulative_savings": cumulative_savings,
+        "revenue_requirement_annual": rr_annual,
+    }

@@ -35,6 +35,7 @@ from src.models.project import (
     ProjectBasics,
     SpecialBenefitInputs,
     TechnologySpecs,
+    UOSInputs,
 )
 
 
@@ -79,6 +80,9 @@ class InputFormWidget(QWidget):
 
         # Section 9: Special Benefits (formula-based)
         layout.addWidget(self._create_special_benefits_section())
+
+        # Section 10: Utility-Owned Storage (UOS) Analysis
+        layout.addWidget(self._create_uos_section())
 
         layout.addStretch()
         scroll.setWidget(container)
@@ -552,6 +556,122 @@ class InputFormWidget(QWidget):
 
         return group
 
+    def _create_uos_section(self) -> QGroupBox:
+        group = QGroupBox("Utility-Owned Storage (UOS) Revenue Requirement")
+        layout = QVBoxLayout(group)
+
+        self.uos_check = QCheckBox("Enable UOS Analysis (SCE Revenue Requirement)")
+        self.uos_check.stateChanged.connect(self._toggle_uos)
+        layout.addWidget(self.uos_check)
+
+        # Cost of Capital subsection
+        coc_label = QLabel("SCE Cost of Capital (D.25-12-003)")
+        coc_label.setStyleSheet("font-weight: bold; color: #1565c0; margin-top: 10px;")
+        layout.addWidget(coc_label)
+
+        self.uos_roe_spin = QDoubleSpinBox()
+        self.uos_roe_spin.setRange(5.0, 20.0)
+        self.uos_roe_spin.setValue(10.03)
+        self.uos_roe_spin.setSuffix(" %")
+        self.uos_roe_spin.setDecimals(2)
+        self.uos_roe_spin.setEnabled(False)
+        layout.addLayout(self._row("Return on Equity:", self.uos_roe_spin))
+
+        self.uos_cod_spin = QDoubleSpinBox()
+        self.uos_cod_spin.setRange(0.0, 15.0)
+        self.uos_cod_spin.setValue(4.71)
+        self.uos_cod_spin.setSuffix(" %")
+        self.uos_cod_spin.setDecimals(2)
+        self.uos_cod_spin.setEnabled(False)
+        layout.addLayout(self._row("Cost of Debt:", self.uos_cod_spin))
+
+        self.uos_equity_ratio_spin = QDoubleSpinBox()
+        self.uos_equity_ratio_spin.setRange(0.0, 100.0)
+        self.uos_equity_ratio_spin.setValue(52.0)
+        self.uos_equity_ratio_spin.setSuffix(" %")
+        self.uos_equity_ratio_spin.setDecimals(1)
+        self.uos_equity_ratio_spin.setEnabled(False)
+        layout.addLayout(self._row("Equity Ratio:", self.uos_equity_ratio_spin))
+
+        self.uos_ror_spin = QDoubleSpinBox()
+        self.uos_ror_spin.setRange(1.0, 15.0)
+        self.uos_ror_spin.setValue(7.59)
+        self.uos_ror_spin.setSuffix(" %")
+        self.uos_ror_spin.setDecimals(2)
+        self.uos_ror_spin.setEnabled(False)
+        layout.addLayout(self._row("Authorized ROR:", self.uos_ror_spin))
+
+        # Rate Base subsection
+        rb_label = QLabel("Rate Base Parameters")
+        rb_label.setStyleSheet("font-weight: bold; color: #1565c0; margin-top: 10px;")
+        layout.addWidget(rb_label)
+
+        self.uos_book_life_spin = QSpinBox()
+        self.uos_book_life_spin.setRange(10, 40)
+        self.uos_book_life_spin.setValue(20)
+        self.uos_book_life_spin.setSuffix(" years")
+        self.uos_book_life_spin.setEnabled(False)
+        layout.addLayout(self._row("Book Life:", self.uos_book_life_spin))
+
+        self.uos_macrs_combo = QComboBox()
+        self.uos_macrs_combo.addItems(["5-Year", "7-Year", "15-Year", "20-Year"])
+        self.uos_macrs_combo.setCurrentIndex(1)  # 7-Year default
+        self.uos_macrs_combo.setEnabled(False)
+        layout.addLayout(self._row("MACRS Class:", self.uos_macrs_combo))
+
+        # Wires vs NWA subsection
+        nwa_label = QLabel("Wires vs NWA Comparison")
+        nwa_label.setStyleSheet("font-weight: bold; color: #1565c0; margin-top: 10px;")
+        layout.addWidget(nwa_label)
+
+        self.uos_wires_cost_spin = QDoubleSpinBox()
+        self.uos_wires_cost_spin.setRange(0, 2000.0)
+        self.uos_wires_cost_spin.setValue(500.0)
+        self.uos_wires_cost_spin.setPrefix("$")
+        self.uos_wires_cost_spin.setSuffix(" /kW")
+        self.uos_wires_cost_spin.setDecimals(0)
+        self.uos_wires_cost_spin.setEnabled(False)
+        layout.addLayout(self._row("Wires Cost:", self.uos_wires_cost_spin))
+
+        self.uos_deferral_spin = QSpinBox()
+        self.uos_deferral_spin.setRange(1, 20)
+        self.uos_deferral_spin.setValue(5)
+        self.uos_deferral_spin.setSuffix(" years")
+        self.uos_deferral_spin.setEnabled(False)
+        layout.addLayout(self._row("NWA Deferral:", self.uos_deferral_spin))
+
+        self.uos_incrementality_check = QCheckBox("Apply Incrementality Adjustment")
+        self.uos_incrementality_check.setChecked(True)
+        self.uos_incrementality_check.setEnabled(False)
+        layout.addWidget(self.uos_incrementality_check)
+
+        # SOD subsection
+        sod_label = QLabel("Slice-of-Day Feasibility")
+        sod_label.setStyleSheet("font-weight: bold; color: #1565c0; margin-top: 10px;")
+        layout.addWidget(sod_label)
+
+        self.uos_sod_hours_spin = QSpinBox()
+        self.uos_sod_hours_spin.setRange(1, 12)
+        self.uos_sod_hours_spin.setValue(4)
+        self.uos_sod_hours_spin.setSuffix(" hours")
+        self.uos_sod_hours_spin.setEnabled(False)
+        layout.addLayout(self._row("Min SOD Hours:", self.uos_sod_hours_spin))
+
+        return group
+
+    def _toggle_uos(self, state):
+        enabled = state == Qt.CheckState.Checked.value
+        self.uos_roe_spin.setEnabled(enabled)
+        self.uos_cod_spin.setEnabled(enabled)
+        self.uos_equity_ratio_spin.setEnabled(enabled)
+        self.uos_ror_spin.setEnabled(enabled)
+        self.uos_book_life_spin.setEnabled(enabled)
+        self.uos_macrs_combo.setEnabled(enabled)
+        self.uos_wires_cost_spin.setEnabled(enabled)
+        self.uos_deferral_spin.setEnabled(enabled)
+        self.uos_incrementality_check.setEnabled(enabled)
+        self.uos_sod_hours_spin.setEnabled(enabled)
+
     def _toggle_reliability(self, state):
         enabled = state == Qt.CheckState.Checked.value
         self.outage_hours_spin.setEnabled(enabled)
@@ -695,6 +815,25 @@ class InputFormWidget(QWidget):
             self.months_saved_spin.setValue(sb.months_saved)
             self.value_per_kw_month_spin.setValue(sb.value_per_kw_month)
 
+        # UOS Inputs
+        if project.uos_inputs:
+            u = project.uos_inputs
+            self.uos_check.setChecked(u.enabled)
+            self.uos_roe_spin.setValue(u.roe * 100)
+            self.uos_cod_spin.setValue(u.cost_of_debt * 100)
+            self.uos_equity_ratio_spin.setValue(u.equity_ratio * 100)
+            self.uos_ror_spin.setValue(u.ror * 100)
+            self.uos_book_life_spin.setValue(u.book_life_years)
+            macrs_reverse = {5: "5-Year", 7: "7-Year", 15: "15-Year", 20: "20-Year"}
+            macrs_text = macrs_reverse.get(u.macrs_class, "7-Year")
+            idx = self.uos_macrs_combo.findText(macrs_text)
+            if idx >= 0:
+                self.uos_macrs_combo.setCurrentIndex(idx)
+            self.uos_wires_cost_spin.setValue(u.wires_cost_per_kw)
+            self.uos_deferral_spin.setValue(u.nwa_deferral_years)
+            self.uos_incrementality_check.setChecked(u.nwa_incrementality)
+            self.uos_sod_hours_spin.setValue(u.sod_min_hours)
+
         # Benefits table
         self.benefits_table.setRowCount(0)
         for benefit in project.benefits:
@@ -809,6 +948,24 @@ class InputFormWidget(QWidget):
             value_per_kw_month=self.value_per_kw_month_spin.value(),
         )
 
+        # Build UOS inputs
+        macrs_map = {"5-Year": 5, "7-Year": 7, "15-Year": 15, "20-Year": 20}
+        uos_inputs = None
+        if self.uos_check.isChecked():
+            uos_inputs = UOSInputs(
+                enabled=True,
+                roe=self.uos_roe_spin.value() / 100,
+                cost_of_debt=self.uos_cod_spin.value() / 100,
+                equity_ratio=self.uos_equity_ratio_spin.value() / 100,
+                ror=self.uos_ror_spin.value() / 100,
+                book_life_years=self.uos_book_life_spin.value(),
+                macrs_class=macrs_map.get(self.uos_macrs_combo.currentText(), 7),
+                wires_cost_per_kw=self.uos_wires_cost_spin.value(),
+                nwa_deferral_years=self.uos_deferral_spin.value(),
+                nwa_incrementality=self.uos_incrementality_check.isChecked(),
+                sod_min_hours=self.uos_sod_hours_spin.value(),
+            )
+
         return Project(
             basics=basics,
             technology=technology,
@@ -816,5 +973,6 @@ class InputFormWidget(QWidget):
             financing=financing,
             benefits=benefits,
             special_benefits=special_benefits,
+            uos_inputs=uos_inputs,
             assumption_library=lib_name,
         )

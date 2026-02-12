@@ -5,6 +5,7 @@ with different CapEx and benefit multiplier assumptions.
 """
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
@@ -19,6 +20,14 @@ from PyQt6.QtWidgets import (
 
 from src.models.project import FinancialResults, Project
 from src.utils.formatters import format_currency
+
+
+# Color palette for cell backgrounds (readable on both light and dark themes)
+COLOR_GREEN = QColor("#c6efce")
+COLOR_YELLOW = QColor("#ffeb9c")
+COLOR_RED = QColor("#ffc7ce")
+COLOR_DARK_TEXT = QColor("#000000")
+COLOR_BASE_ROW = QColor("#d6e4f0")  # Highlight for the base-case row
 
 
 class SensitivityWidget(QWidget):
@@ -49,7 +58,8 @@ class SensitivityWidget(QWidget):
         # Instructions
         instructions = QLabel(
             "These tables show how NPV and BCR change with different CapEx levels "
-            "and benefit scaling factors. Green = BCR ≥ 1.5, Yellow = 1.0-1.5, Red = < 1.0"
+            "and benefit scaling factors. Green = BCR \u2265 1.5, Yellow = 1.0\u20131.5, "
+            "Red = < 1.0. The highlighted row is your current CapEx input."
         )
         instructions.setWordWrap(True)
         instructions.setStyleSheet("color: #666; padding: 8px; background: #f5f5f5; border-radius: 4px;")
@@ -59,7 +69,7 @@ class SensitivityWidget(QWidget):
         npv_group = QGroupBox("NPV Sensitivity ($)")
         npv_layout = QVBoxLayout(npv_group)
         self.npv_table = QTableWidget()
-        self.npv_table.setMinimumHeight(220)
+        self.npv_table.setMinimumHeight(250)
         npv_layout.addWidget(self.npv_table)
         content_layout.addWidget(npv_group)
 
@@ -67,12 +77,12 @@ class SensitivityWidget(QWidget):
         bcr_group = QGroupBox("BCR Sensitivity (Benefit-Cost Ratio)")
         bcr_layout = QVBoxLayout(bcr_group)
         self.bcr_table = QTableWidget()
-        self.bcr_table.setMinimumHeight(220)
+        self.bcr_table.setMinimumHeight(250)
         bcr_layout.addWidget(self.bcr_table)
         content_layout.addWidget(bcr_group)
 
         # Single Variable Impacts
-        single_group = QGroupBox("Single Variable Impacts (±20%)")
+        single_group = QGroupBox("Single Variable Impacts (\u00b120%)")
         single_layout = QVBoxLayout(single_group)
         self.single_table = QTableWidget()
         self.single_table.setMinimumHeight(150)
@@ -88,10 +98,24 @@ class SensitivityWidget(QWidget):
         self.placeholder.setVisible(False)
         self.content.setVisible(True)
 
-        capex_levels = [100, 120, 140, 160, 180, 200, 220]
-        benefit_multipliers = [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3]
-
         base_capex = project.costs.capex_per_kwh
+
+        # Build CapEx levels centered on the user's input value
+        # Use ~10% steps, rounded to nearest 10
+        capex_step = max(10, round(base_capex * 0.1 / 10) * 10)
+        capex_levels = [
+            round(base_capex - 3 * capex_step),
+            round(base_capex - 2 * capex_step),
+            round(base_capex - 1 * capex_step),
+            round(base_capex),
+            round(base_capex + 1 * capex_step),
+            round(base_capex + 2 * capex_step),
+            round(base_capex + 3 * capex_step),
+        ]
+        capex_levels = [max(10, c) for c in capex_levels]  # no negatives
+        base_row_idx = 3  # center row is the user's input
+
+        benefit_multipliers = [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3]
 
         # Calculate sensitivity matrices
         npv_matrix = []
@@ -103,7 +127,6 @@ class SensitivityWidget(QWidget):
             capex_ratio = capex / base_capex if base_capex > 0 else 1.0
 
             for ben_mult in benefit_multipliers:
-                # Simplified: CapEx is ~70% of total costs
                 adjusted_pv_benefits = results.pv_benefits * ben_mult
                 adjusted_pv_costs = results.pv_costs * (1 + (capex_ratio - 1) * 0.7)
 
@@ -122,7 +145,8 @@ class SensitivityWidget(QWidget):
             capex_levels,
             benefit_multipliers,
             npv_matrix,
-            is_bcr=False
+            is_bcr=False,
+            base_row_idx=base_row_idx,
         )
 
         # Fill BCR table
@@ -131,7 +155,8 @@ class SensitivityWidget(QWidget):
             capex_levels,
             benefit_multipliers,
             bcr_matrix,
-            is_bcr=True
+            is_bcr=True,
+            base_row_idx=base_row_idx,
         )
 
         # Fill single variable table
@@ -143,9 +168,10 @@ class SensitivityWidget(QWidget):
         capex_levels: list,
         benefit_mults: list,
         matrix: list,
-        is_bcr: bool
+        is_bcr: bool,
+        base_row_idx: int = 3,
     ):
-        """Fill a sensitivity table with values."""
+        """Fill a sensitivity table with colored values."""
         table.clear()
         table.setRowCount(len(capex_levels))
         table.setColumnCount(len(benefit_mults) + 1)
@@ -154,42 +180,47 @@ class SensitivityWidget(QWidget):
         headers = ["CapEx"] + [f"{int(m*100)}% Benefits" for m in benefit_mults]
         table.setHorizontalHeaderLabels(headers)
 
+        text_brush = QBrush(COLOR_DARK_TEXT)
+
         for row_idx, capex in enumerate(capex_levels):
+            is_base_row = (row_idx == base_row_idx)
+
             # Row header (CapEx level)
-            capex_item = QTableWidgetItem(f"${capex}/kWh")
+            label = f"${capex}/kWh"
+            if is_base_row:
+                label += " \u25c0"  # arrow marker for base case
+            capex_item = QTableWidgetItem(label)
             capex_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            capex_item.setForeground(text_brush)
+            if is_base_row:
+                capex_item.setBackground(QBrush(COLOR_BASE_ROW))
             table.setItem(row_idx, 0, capex_item)
 
             # Values
             for col_idx, value in enumerate(matrix[row_idx]):
                 if is_bcr:
                     text = f"{value:.2f}"
-                    # Color coding for BCR
                     if value >= 1.5:
-                        color = "#c6efce"  # Green
+                        bg_color = COLOR_GREEN
                     elif value >= 1.0:
-                        color = "#ffeb9c"  # Yellow
+                        bg_color = COLOR_YELLOW
                     else:
-                        color = "#ffc7ce"  # Red
+                        bg_color = COLOR_RED
                 else:
                     text = format_currency(value, decimals=1)
-                    color = "#c6efce" if value >= 0 else "#ffc7ce"
+                    if value >= 0:
+                        bg_color = COLOR_GREEN
+                    else:
+                        bg_color = COLOR_RED
 
                 item = QTableWidgetItem(text)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                item.setBackground(Qt.GlobalColor.white)
-                # Set background via stylesheet workaround
+                item.setBackground(QBrush(bg_color))
+                item.setForeground(text_brush)
                 table.setItem(row_idx, col_idx + 1, item)
 
-                # Apply color
-                if is_bcr or value < 0:
-                    item.setBackground(
-                        Qt.GlobalColor.green if value >= 1.5 else
-                        Qt.GlobalColor.yellow if value >= 1.0 else
-                        Qt.GlobalColor.red
-                    ) if is_bcr else None
-
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table.verticalHeader().setVisible(True)
 
     def _fill_single_variable_table(self, project: Project, results: FinancialResults):
         """Fill single variable sensitivity table."""
@@ -201,6 +232,7 @@ class SensitivityWidget(QWidget):
         )
 
         base_npv = results.npv
+        text_brush = QBrush(COLOR_DARK_TEXT)
 
         rows = [
             (
@@ -238,6 +270,11 @@ class SensitivityWidget(QWidget):
             ]
             for col_idx, item in enumerate(items):
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                item.setForeground(text_brush)
+                # Color the NPV cells
+                if col_idx >= 2:
+                    val = low if col_idx == 2 else high
+                    item.setBackground(QBrush(COLOR_GREEN if val >= 0 else COLOR_RED))
                 self.single_table.setItem(row_idx, col_idx, item)
 
         self.single_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)

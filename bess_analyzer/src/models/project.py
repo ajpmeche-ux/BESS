@@ -558,6 +558,104 @@ class FinancialResults:
 
 
 @dataclass
+class UOSInputs:
+    """Utility-Owned Storage (UOS) revenue requirement inputs.
+
+    Contains SCE-specific regulatory parameters for rate base analysis,
+    avoided cost calculation, wires comparison, and SOD feasibility.
+
+    Attributes:
+        enabled: Whether UOS analysis is active.
+        roe: Authorized return on equity (per D.25-12-003).
+        cost_of_debt: Embedded cost of long-term debt.
+        cost_of_preferred: Cost of preferred stock.
+        equity_ratio: Common equity share of capital structure.
+        debt_ratio: Long-term debt share.
+        preferred_ratio: Preferred stock share.
+        ror: Authorized rate of return.
+        federal_tax_rate: Federal corporate income tax rate.
+        state_tax_rate: California state income tax rate.
+        property_tax_rate: Property tax rate on assessed value.
+        book_life_years: Book depreciation life for rate base.
+        macrs_class: MACRS property class (5, 7, 15, or 20).
+        bonus_depreciation_pct: Bonus depreciation percentage.
+        wires_cost_per_kw: Traditional wires alternative cost ($/kW).
+        wires_book_life: Wires asset book life (years).
+        wires_lead_time: Wires project lead time (years).
+        nwa_deferral_years: NWA deferral period (years).
+        nwa_incrementality: Whether to apply incrementality adjustment.
+        sod_min_hours: Minimum qualifying hours for SOD RA.
+        sod_deration_threshold: Minimum capacity factor for SOD qualification.
+        use_acc_trajectory: Use ACC declining generation capacity trajectory.
+    """
+
+    enabled: bool = False
+
+    # Cost of Capital (D.25-12-003 defaults)
+    roe: float = 0.1003
+    cost_of_debt: float = 0.0471
+    cost_of_preferred: float = 0.0548
+    equity_ratio: float = 0.5200
+    debt_ratio: float = 0.4347
+    preferred_ratio: float = 0.0453
+    ror: float = 0.0759
+    federal_tax_rate: float = 0.21
+    state_tax_rate: float = 0.0884
+    property_tax_rate: float = 0.01
+
+    # Rate Base parameters
+    book_life_years: int = 20
+    macrs_class: int = 7
+    bonus_depreciation_pct: float = 0.0
+
+    # Wires vs NWA comparison
+    wires_cost_per_kw: float = 500.0
+    wires_book_life: int = 40
+    wires_lead_time: int = 5
+    nwa_deferral_years: int = 5
+    nwa_incrementality: bool = True
+
+    # Slice-of-Day
+    sod_min_hours: int = 4
+    sod_deration_threshold: float = 0.50
+
+    # ACC integration
+    use_acc_trajectory: bool = True
+
+    def to_dict(self) -> dict:
+        return {
+            "enabled": self.enabled,
+            "roe": self.roe,
+            "cost_of_debt": self.cost_of_debt,
+            "cost_of_preferred": self.cost_of_preferred,
+            "equity_ratio": self.equity_ratio,
+            "debt_ratio": self.debt_ratio,
+            "preferred_ratio": self.preferred_ratio,
+            "ror": self.ror,
+            "federal_tax_rate": self.federal_tax_rate,
+            "state_tax_rate": self.state_tax_rate,
+            "property_tax_rate": self.property_tax_rate,
+            "book_life_years": self.book_life_years,
+            "macrs_class": self.macrs_class,
+            "bonus_depreciation_pct": self.bonus_depreciation_pct,
+            "wires_cost_per_kw": self.wires_cost_per_kw,
+            "wires_book_life": self.wires_book_life,
+            "wires_lead_time": self.wires_lead_time,
+            "nwa_deferral_years": self.nwa_deferral_years,
+            "nwa_incrementality": self.nwa_incrementality,
+            "sod_min_hours": self.sod_min_hours,
+            "sod_deration_threshold": self.sod_deration_threshold,
+            "use_acc_trajectory": self.use_acc_trajectory,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "UOSInputs":
+        valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        filtered = {k: v for k, v in data.items() if k in valid_fields}
+        return cls(**filtered)
+
+
+@dataclass
 class Project:
     """Complete BESS project combining all inputs and results.
 
@@ -568,6 +666,7 @@ class Project:
         financing: Project financing structure (optional).
         benefits: List of benefit/revenue streams.
         special_benefits: Formula-based benefits (reliability, safety, speed) (optional).
+        uos_inputs: Utility-Owned Storage regulatory inputs (optional).
         results: Calculated financial results (populated after analysis).
         assumption_library: Name of loaded assumption library, if any.
         library_version: Version of loaded assumption library, if any.
@@ -579,6 +678,7 @@ class Project:
     financing: Optional[FinancingInputs] = None
     benefits: List[BenefitStream] = field(default_factory=list)
     special_benefits: Optional[SpecialBenefitInputs] = None
+    uos_inputs: Optional[UOSInputs] = None
     results: Optional[FinancialResults] = None
     assumption_library: str = ""
     library_version: str = ""
@@ -597,6 +697,7 @@ class Project:
             "financing": self.financing.to_dict() if self.financing else None,
             "benefits": [b.to_dict() for b in self.benefits],
             "special_benefits": self.special_benefits.to_dict() if self.special_benefits else None,
+            "uos_inputs": self.uos_inputs.to_dict() if self.uos_inputs else None,
             "results": self.results.to_dict() if self.results else None,
             "assumption_library": self.assumption_library,
             "library_version": self.library_version,
@@ -606,6 +707,7 @@ class Project:
     def from_dict(cls, data: dict) -> "Project":
         financing_data = data.get("financing")
         special_benefits_data = data.get("special_benefits")
+        uos_data = data.get("uos_inputs")
         return cls(
             basics=ProjectBasics.from_dict(data["basics"]),
             technology=TechnologySpecs.from_dict(data["technology"]),
@@ -613,6 +715,7 @@ class Project:
             financing=FinancingInputs.from_dict(financing_data) if financing_data else None,
             benefits=[BenefitStream.from_dict(b) for b in data.get("benefits", [])],
             special_benefits=SpecialBenefitInputs.from_dict(special_benefits_data) if special_benefits_data else None,
+            uos_inputs=UOSInputs.from_dict(uos_data) if uos_data else None,
             results=FinancialResults.from_dict(data["results"]) if data.get("results") else None,
             assumption_library=data.get("assumption_library", ""),
             library_version=data.get("library_version", ""),
