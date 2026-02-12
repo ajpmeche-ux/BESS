@@ -197,6 +197,10 @@ class MainWindow(QMainWindow):
                 uos_results = calculate_uos_analysis(project)
 
             self.results_widget.display_results(project, results)
+            if uos_results:
+                self.results_widget.display_uos_results(uos_results)
+            else:
+                self.results_widget.display_uos_results(None)
             self.sensitivity_widget.display_sensitivity(project, results)
             self.tabs.setCurrentIndex(1)
             self.report_btn.setEnabled(True)
