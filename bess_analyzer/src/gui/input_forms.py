@@ -29,11 +29,13 @@ from PyQt6.QtWidgets import (
 from src.data.libraries import AssumptionLibrary
 from src.models.project import (
     BenefitStream,
+    BuildSchedule,
     CostInputs,
     FinancingInputs,
     Project,
     ProjectBasics,
     SpecialBenefitInputs,
+    TDDeferralInputs,
     TechnologySpecs,
     UOSInputs,
 )
@@ -83,6 +85,12 @@ class InputFormWidget(QWidget):
 
         # Section 10: Utility-Owned Storage (UOS) Analysis
         layout.addWidget(self._create_uos_section())
+
+        # Section 11: Phased Build Schedule (JIT)
+        layout.addWidget(self._create_build_schedule_section())
+
+        # Section 12: T&D Capital Deferral
+        layout.addWidget(self._create_td_deferral_section())
 
         layout.addStretch()
         scroll.setWidget(container)
@@ -659,6 +667,57 @@ class InputFormWidget(QWidget):
 
         return group
 
+    def _create_build_schedule_section(self) -> QGroupBox:
+        """Creates the UI section for the phased build schedule table."""
+        group = QGroupBox("Phased Build Schedule (JIT Cohorts)")
+        layout = QVBoxLayout(group)
+
+        self.build_schedule_table = QTableWidget(10, 3)  # 10 rows for cohorts
+        self.build_schedule_table.setHorizontalHeaderLabels(
+            ["COD (Year)", "Capacity (MW)", "ITC Rate (%)"]
+        )
+        header = self.build_schedule_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.build_schedule_table.setMinimumHeight(280)
+
+        # Populate with default empty rows
+        for row in range(10):
+            self.build_schedule_table.setItem(row, 0, QTableWidgetItem("0"))
+            self.build_schedule_table.setItem(row, 1, QTableWidgetItem("0.0"))
+            self.build_schedule_table.setItem(row, 2, QTableWidgetItem("30.0"))
+
+        layout.addWidget(self.build_schedule_table)
+        return group
+
+    def _create_td_deferral_section(self) -> QGroupBox:
+        """Creates the UI section for T&D capital deferral inputs."""
+        group = QGroupBox("T&D Capital Deferral")
+        layout = QVBoxLayout(group)
+
+        self.td_capital_cost_spin = QDoubleSpinBox()
+        self.td_capital_cost_spin.setRange(0, 1_000_000_000)
+        self.td_capital_cost_spin.setValue(100_000_000)
+        self.td_capital_cost_spin.setPrefix("$")
+        self.td_capital_cost_spin.setDecimals(0)
+        layout.addLayout(self._row("Capital Cost (K):", self.td_capital_cost_spin))
+
+        self.td_deferral_years_spin = QSpinBox()
+        self.td_deferral_years_spin.setRange(0, 20)
+        self.td_deferral_years_spin.setValue(5)
+        self.td_deferral_years_spin.setSuffix(" years")
+        layout.addLayout(self._row("Deferral Period (n):", self.td_deferral_years_spin))
+
+        self.td_growth_rate_spin = QDoubleSpinBox()
+        self.td_growth_rate_spin.setRange(0, 10.0)
+        self.td_growth_rate_spin.setValue(2.0)
+        self.td_growth_rate_spin.setSuffix(" %")
+        self.td_growth_rate_spin.setDecimals(1)
+        layout.addLayout(self._row("Growth Rate (g):", self.td_growth_rate_spin))
+
+        return group
+
     def _toggle_uos(self, state):
         enabled = state == Qt.CheckState.Checked.value
         self.uos_roe_spin.setEnabled(enabled)
@@ -834,8 +893,28 @@ class InputFormWidget(QWidget):
             self.uos_incrementality_check.setChecked(u.nwa_incrementality)
             self.uos_sod_hours_spin.setValue(u.sod_min_hours)
 
-        # Benefits table
-        self.benefits_table.setRowCount(0)
+        # Build Schedule
+        if project.build_schedule:
+            # Clear table before loading
+            for row in range(self.build_schedule_table.rowCount()):
+                self.build_schedule_table.setItem(row, 0, QTableWidgetItem("0"))
+                self.build_schedule_table.setItem(row, 1, QTableWidgetItem("0.0"))
+                self.build_schedule_table.setItem(row, 2, QTableWidgetItem("0.0"))
+
+            for i, (cod_year, capacity_mw) in enumerate(project.build_schedule.tranches):
+                if i < self.build_schedule_table.rowCount():
+                    self.build_schedule_table.setItem(i, 0, QTableWidgetItem(str(cod_year)))
+                    self.build_schedule_table.setItem(i, 1, QTableWidgetItem(str(capacity_mw)))
+                    # ITC rate is not stored per-tranche in the model, so use main rate
+                    total_itc = (project.costs.itc_percent + project.costs.itc_adders) * 100
+                    self.build_schedule_table.setItem(i, 2, QTableWidgetItem(f"{total_itc:.1f}"))
+
+        # T&D Deferral
+        if project.td_deferral:
+            self.td_capital_cost_spin.setValue(project.td_deferral.deferred_capital_cost)
+            self.td_deferral_years_spin.setValue(project.td_deferral.deferral_years)
+            self.td_growth_rate_spin.setValue(project.td_deferral.load_growth_rate * 100)
+
         for benefit in project.benefits:
             row = self.benefits_table.rowCount()
             self.benefits_table.insertRow(row)
@@ -966,6 +1045,30 @@ class InputFormWidget(QWidget):
                 sod_min_hours=self.uos_sod_hours_spin.value(),
             )
 
+        # Build schedule
+        tranches = []
+        for row in range(self.build_schedule_table.rowCount()):
+            try:
+                cod_item = self.build_schedule_table.item(row, 0)
+                cap_item = self.build_schedule_table.item(row, 1)
+
+                if cod_item and cap_item and cod_item.text() and cap_item.text():
+                    cod = int(cod_item.text())
+                    cap = float(cap_item.text())
+                    if cap > 0:  # Only add cohorts with capacity
+                        tranches.append((cod, cap))
+            except (ValueError, AttributeError):
+                continue # Skip empty or invalid rows
+        build_schedule = BuildSchedule(tranches=tranches) if tranches else None
+
+        # T&D Deferral
+        td_deferral = TDDeferralInputs(
+            deferred_capital_cost=self.td_capital_cost_spin.value(),
+            deferral_years=self.td_deferral_years_spin.value(),
+            load_growth_rate=self.td_growth_rate_spin.value() / 100,
+            discount_rate=basics.discount_rate,
+        )
+
         return Project(
             basics=basics,
             technology=technology,
@@ -974,5 +1077,7 @@ class InputFormWidget(QWidget):
             benefits=benefits,
             special_benefits=special_benefits,
             uos_inputs=uos_inputs,
+            build_schedule=build_schedule,
+            td_deferral=td_deferral,
             assumption_library=lib_name,
         )

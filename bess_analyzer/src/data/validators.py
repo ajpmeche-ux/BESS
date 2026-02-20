@@ -6,7 +6,7 @@ Messages describe errors or warnings for user display.
 
 from typing import List, Tuple
 
-from src.models.project import Project
+from src.models.project import BuildSchedule, Project, TDDeferralInputs
 
 
 def validate_capacity(capacity_mw: float) -> Tuple[bool, str]:
@@ -84,6 +84,43 @@ def validate_capex(capex_per_kwh: float) -> Tuple[bool, str]:
     return True, ""
 
 
+def validate_build_schedule(schedule: BuildSchedule, capacity_mw: float) -> Tuple[bool, str]:
+    """Validate build schedule consistency with project capacity.
+
+    Args:
+        schedule: Build schedule to validate.
+        capacity_mw: Total project capacity from basics.
+
+    Returns:
+        (is_valid, message) tuple.
+    """
+    if not schedule or not schedule.tranches:
+        return True, ""
+    total = schedule.total_capacity_mw
+    if abs(total - capacity_mw) > 0.01:
+        return False, (f"Build schedule total ({total:.1f} MW) does not match "
+                       f"project capacity ({capacity_mw:.1f} MW).")
+    return True, ""
+
+
+def validate_td_deferral(td: TDDeferralInputs) -> Tuple[bool, str]:
+    """Validate T&D deferral inputs.
+
+    Args:
+        td: T&D deferral inputs to validate.
+
+    Returns:
+        (is_valid, message) tuple.
+    """
+    if not td:
+        return True, ""
+    if td.deferred_capital_cost < 0:
+        return False, "Deferred capital cost must be >= 0."
+    if td.load_growth_rate >= td.discount_rate:
+        return True, "Warning: Load growth rate >= discount rate makes deferral PV negative."
+    return True, ""
+
+
 def validate_project(project: Project) -> Tuple[bool, List[str]]:
     """Run all validations on a complete project.
 
@@ -103,6 +140,12 @@ def validate_project(project: Project) -> Tuple[bool, List[str]]:
         validate_discount_rate(project.basics.discount_rate),
         validate_capex(project.costs.capex_per_kwh),
     ]
+
+    if project.build_schedule:
+        checks.append(validate_build_schedule(project.build_schedule, project.basics.capacity_mw))
+
+    if project.td_deferral:
+        checks.append(validate_td_deferral(project.td_deferral))
 
     for valid, msg in checks:
         if not valid:

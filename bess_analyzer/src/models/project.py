@@ -7,7 +7,7 @@ support JSON serialization via to_dict()/from_dict() methods.
 
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -505,6 +505,103 @@ class SpecialBenefitInputs:
 
 
 @dataclass
+class BuildSchedule:
+    """Phased build schedule for JIT multi-tranche deployment.
+
+    Each tranche represents a cohort of capacity with its own COD year
+    and MW allocation. CapEx for each tranche is determined by the
+    learning curve at its COD year.
+
+    Attributes:
+        tranches: List of (cod_year, capacity_mw) tuples.
+    """
+
+    tranches: List[Tuple[int, float]] = field(default_factory=list)
+
+    def __post_init__(self):
+        for i, (year, mw) in enumerate(self.tranches):
+            if mw <= 0:
+                raise ValueError(f"Tranche {i}: capacity_mw must be > 0, got {mw}")
+            if year < 2020 or year > 2060:
+                raise ValueError(f"Tranche {i}: cod_year must be 2020-2060, got {year}")
+
+    @property
+    def total_capacity_mw(self) -> float:
+        return sum(mw for _, mw in self.tranches)
+
+    @property
+    def first_cod_year(self) -> int:
+        return min(y for y, _ in self.tranches) if self.tranches else 0
+
+    @property
+    def last_cod_year(self) -> int:
+        return max(y for y, _ in self.tranches) if self.tranches else 0
+
+    def to_dict(self) -> dict:
+        return {
+            "tranches": [{"cod_year": y, "capacity_mw": mw} for y, mw in self.tranches],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "BuildSchedule":
+        tranches = [(t["cod_year"], t["capacity_mw"]) for t in data.get("tranches", [])]
+        return cls(tranches=tranches)
+
+
+@dataclass
+class TDDeferralInputs:
+    """T&D Capital Deferral inputs for phased deployment benefit.
+
+    Formula: PV = K * [1 - ((1+g)/(1+r))^n]
+
+    Attributes:
+        deferred_capital_cost: K - total deferred T&D capital cost ($).
+        load_growth_rate: g - annual load growth rate (decimal).
+        discount_rate: r - discount rate for T&D deferral PV (decimal).
+        deferral_years: n - number of years the capital spend is deferred.
+    """
+
+    deferred_capital_cost: float = 0.0
+    load_growth_rate: float = 0.01
+    discount_rate: float = 0.07
+    deferral_years: int = 5
+
+    def __post_init__(self):
+        if self.deferred_capital_cost < 0:
+            raise ValueError(f"deferred_capital_cost must be >= 0, got {self.deferred_capital_cost}")
+        if not 0 <= self.load_growth_rate <= 0.20:
+            raise ValueError(f"load_growth_rate must be 0-0.20, got {self.load_growth_rate}")
+        if not 0 < self.discount_rate < 1:
+            raise ValueError(f"discount_rate must be between 0 and 1, got {self.discount_rate}")
+        if self.deferral_years < 0:
+            raise ValueError(f"deferral_years must be >= 0, got {self.deferral_years}")
+
+    def calculate_deferral_pv(self) -> float:
+        """Calculate T&D deferral present value.
+
+        PV = K * [1 - ((1+g)/(1+r))^n]
+        """
+        if self.deferred_capital_cost <= 0 or self.deferral_years <= 0:
+            return 0.0
+        ratio = (1 + self.load_growth_rate) / (1 + self.discount_rate)
+        return self.deferred_capital_cost * (1 - ratio ** self.deferral_years)
+
+    def to_dict(self) -> dict:
+        return {
+            "deferred_capital_cost": self.deferred_capital_cost,
+            "load_growth_rate": self.load_growth_rate,
+            "discount_rate": self.discount_rate,
+            "deferral_years": self.deferral_years,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "TDDeferralInputs":
+        valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        filtered = {k: v for k, v in data.items() if k in valid_fields}
+        return cls(**filtered)
+
+
+@dataclass
 class FinancialResults:
     """Calculated financial metrics from project economics.
 
@@ -535,6 +632,10 @@ class FinancialResults:
     annual_costs: List[float] = field(default_factory=list)
     annual_benefits: List[float] = field(default_factory=list)
     annual_net: List[float] = field(default_factory=list)
+    flexibility_value: float = 0.0
+    td_deferral_pv: float = 0.0
+    cohort_capex: List[float] = field(default_factory=list)
+    num_tranches: int = 1
 
     def to_dict(self) -> dict:
         return {
@@ -550,10 +651,19 @@ class FinancialResults:
             "annual_costs": list(self.annual_costs),
             "annual_benefits": list(self.annual_benefits),
             "annual_net": list(self.annual_net),
+            "flexibility_value": self.flexibility_value,
+            "td_deferral_pv": self.td_deferral_pv,
+            "cohort_capex": list(self.cohort_capex),
+            "num_tranches": self.num_tranches,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "FinancialResults":
+        data = dict(data)
+        data.setdefault("flexibility_value", 0.0)
+        data.setdefault("td_deferral_pv", 0.0)
+        data.setdefault("cohort_capex", [])
+        data.setdefault("num_tranches", 1)
         return cls(**data)
 
 
@@ -679,6 +789,8 @@ class Project:
     benefits: List[BenefitStream] = field(default_factory=list)
     special_benefits: Optional[SpecialBenefitInputs] = None
     uos_inputs: Optional[UOSInputs] = None
+    build_schedule: Optional[BuildSchedule] = None
+    td_deferral: Optional[TDDeferralInputs] = None
     results: Optional[FinancialResults] = None
     assumption_library: str = ""
     library_version: str = ""
@@ -689,6 +801,17 @@ class Project:
             return self.financing.calculate_wacc()
         return self.basics.discount_rate
 
+    def is_multi_tranche(self) -> bool:
+        """Return True if project uses a phased build schedule with multiple tranches."""
+        return (self.build_schedule is not None
+                and len(self.build_schedule.tranches) > 1)
+
+    def get_effective_tranches(self) -> List[Tuple[int, float]]:
+        """Return tranches list; single tranche from basics if no build_schedule."""
+        if self.build_schedule and self.build_schedule.tranches:
+            return list(self.build_schedule.tranches)
+        return [(self.basics.in_service_date.year, self.basics.capacity_mw)]
+
     def to_dict(self) -> dict:
         return {
             "basics": self.basics.to_dict(),
@@ -698,6 +821,8 @@ class Project:
             "benefits": [b.to_dict() for b in self.benefits],
             "special_benefits": self.special_benefits.to_dict() if self.special_benefits else None,
             "uos_inputs": self.uos_inputs.to_dict() if self.uos_inputs else None,
+            "build_schedule": self.build_schedule.to_dict() if self.build_schedule else None,
+            "td_deferral": self.td_deferral.to_dict() if self.td_deferral else None,
             "results": self.results.to_dict() if self.results else None,
             "assumption_library": self.assumption_library,
             "library_version": self.library_version,
@@ -708,6 +833,8 @@ class Project:
         financing_data = data.get("financing")
         special_benefits_data = data.get("special_benefits")
         uos_data = data.get("uos_inputs")
+        build_schedule_data = data.get("build_schedule")
+        td_deferral_data = data.get("td_deferral")
         return cls(
             basics=ProjectBasics.from_dict(data["basics"]),
             technology=TechnologySpecs.from_dict(data["technology"]),
@@ -716,6 +843,8 @@ class Project:
             benefits=[BenefitStream.from_dict(b) for b in data.get("benefits", [])],
             special_benefits=SpecialBenefitInputs.from_dict(special_benefits_data) if special_benefits_data else None,
             uos_inputs=UOSInputs.from_dict(uos_data) if uos_data else None,
+            build_schedule=BuildSchedule.from_dict(build_schedule_data) if build_schedule_data else None,
+            td_deferral=TDDeferralInputs.from_dict(td_deferral_data) if td_deferral_data else None,
             results=FinancialResults.from_dict(data["results"]) if data.get("results") else None,
             assumption_library=data.get("assumption_library", ""),
             library_version=data.get("library_version", ""),

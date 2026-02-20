@@ -445,23 +445,33 @@ Annual Arbitrage Value = BESS Energy Capacity (MWh) × Number of Cycles per Year
 
 ### 6.5 T&D Deferral (Common)
 
-**Definition**: T&D deferral value arises when a BESS is strategically sited and dispatched to reduce peak loads on specific transmission or distribution infrastructure, thereby deferring or avoiding the need for costly traditional infrastructure upgrades (ee.g., new substations, feeders, or transmission lines).
+**Definition**: T&D deferral value arises when a BESS is strategically sited and dispatched to reduce peak loads on specific transmission or distribution infrastructure, thereby deferring or avoiding the need for costly traditional infrastructure upgrades (e.g., new substations, feeders, or transmission lines). This benefit is monetized as the present value of delaying a large capital expenditure.
 
-**Methodology** (Based on E3 Avoided Cost Calculator principles):
+**Methodology (Capital-Based Deferral)**:
+The present value (PV) of deferring a capital investment is calculated using the following formula, which captures the time value of money on the deferred capital, accounting for the asset's own cost inflation.
+
+**Formula**:
 ```
-Deferral Value = Avoided T&D Cost ($/kW) × Deferral Period (Years) × BESS Contribution Factor
+PV = K * [1 - ((1 + g) / (1 + r))^n]
 ```
 
 Where:
--   **Avoided T&D Cost**: The marginal cost of the transmission or distribution capacity that is deferred or avoided. This can range from ~$100-300/kW, but should be based on specific utility planning estimates.
--   **Deferral Period**: The number of years the BESS can delay the traditional infrastructure upgrade. Typically ranges from 3-10 years.
--   **BESS Contribution Factor**: The effective load carrying capability of the BESS in reducing the critical peak load, often expressed as a percentage (70-90%).
+-   **PV**: Present Value of the deferral benefit.
+-   **K**: Upfront capital cost of the traditional wires solution that is being deferred (e.g., $100M for a new substation).
+-   **g**: The annual growth or inflation rate of the capital cost of the deferred asset (e.g., 2%).
+-   **r**: The utility's discount rate (WACC).
+-   **n**: The number of years the investment is successfully deferred by the BESS.
 
-**Typical Values**: T&D deferral values are highly location-specific. In constrained areas with imminent upgrade needs, values can range from $15-40/kW-year. In unconstrained areas, this value may be $0.
+**Example Calculation**:
+Given K = $100M, n = 5 years, r = 7%, and g = 2%:
+-   PV = $100,000,000 * [1 - ((1 + 0.02) / (1 + 0.07))^5]
+-   PV ≈ $21.5M
+
+This one-time NPV benefit is added to the total project value in the 'Results' sheet.
 
 **Important Considerations for Utility Professionals**:
--   **Location-Specific Analysis**: This is a highly localized benefit. It is crucial to collaborate closely with distribution and transmission planning engineers to identify specific deferral opportunities and validate the avoided cost and deferral period.
--   **Load Shape Analysis**: Detailed analysis of historical and forecasted load shapes at the specific interconnection point is necessary to confirm the BESS's ability to consistently reduce peak demand.
+-   **Location-Specific Analysis**: This is a highly localized benefit. It is crucial to collaborate closely with distribution and transmission planning engineers to identify specific deferral opportunities and validate the avoided cost (K) and deferral period (n).
+-   **Load Shape Analysis**: Detailed analysis of historical and forecasted load shapes at the specific interconnection point is necessary to confirm the BESS's ability to consistently reduce peak demand for the required duration.
 -   **Regulatory Acceptance**: Ensure that the methodology and assumptions for T&D deferral are consistent with regulatory guidelines for non-wires alternatives in your jurisdiction.
 
 **Reference**: E3 CPUC Avoided Cost Calculator 2024 (for California-specific values and methodology); internal utility distribution and transmission planning studies.
@@ -669,6 +679,40 @@ Battery costs have declined approximately 15% per year over the past decade. Pro
 The model applies learning curve to:
 - Augmentation costs (future battery replacement)
 - CapEx projections for fleet expansion analysis
+
+### 8.5 Phased Build Methodology (JIT Cohort Model)
+
+The BESS Economic Analyzer has been upgraded to support a multi-tranche, "Just-In-Time" (JIT) cohort model. This approach moves away from a single, large-scale deployment and instead models a series of smaller, phased-in BESS cohorts. This methodology better reflects modern utility deployment strategies that aim to match investment with load growth, manage capital outlay, and capture technology cost improvements over time.
+
+**Core Logic**:
+Instead of a single Net Present Value (NPV) calculation, the model now calculates the total project value by summing the present values of each individual cohort's cash flows.
+
+**NPV Formula for JIT Cohorts**:
+The total present value of capital costs for a JIT build is the sum of the discounted net costs of each tranche `i` out of `k` total tranches:
+```
+PV_JIT_Cost = Σ [from i=1 to k] ( (q_i * c_0 * (1-λ)^(t_i) - ITC_i) / (1+r)^(t_i) )
+```
+Where:
+-   `q_i`: Energy capacity (kWh) of cohort `i`.
+-   `c_0`: Base capital cost per kWh at the project's base year.
+-   `λ`: The annual technology learning rate (cost decline).
+-   `t_i`: The Commercial Operation Date (COD) year for cohort `i`.
+-   `ITC_i`: The Investment Tax Credit applicable to cohort `i`.
+-   `r`: The discount rate (WACC).
+
+**Staged Degradation**:
+A key feature of the cohort model is that each tranche's degradation is anchored to its specific COD. The capacity of a given cohort `i` in any year `t` is calculated as:
+```
+Capacity_i(t) = Initial_Capacity_i * (1 - degradation_rate)^(t - t_i)
+```
+This ensures that benefits, which are tied to available capacity, are modeled more accurately over the project's life, as newer cohorts will have higher available capacity in later years compared to older ones.
+
+**Flexibility Value Metric**:
+The JIT approach introduces an intrinsic "Flexibility Value," which is the economic advantage gained from deferring investment and capturing cost reductions from the technology learning curve. While not a direct output metric, it can be quantified by comparing the total PV of costs from the JIT model to a hypothetical single build of the same total capacity at Year 0.
+
+**Flexibility Value = PV_Cost(Single Build) - PV_Cost(JIT Build)**
+
+A positive Flexibility Value demonstrates the financial benefit of the phased-build strategy. This metric is crucial for justifying capital deployment strategies to regulators and investment committees.
 
 ---
 

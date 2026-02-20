@@ -15,6 +15,7 @@ import pytest
 from src.models.calculations import (
     _calculate_payback,
     calculate_bcr,
+    calculate_flexibility_value,
     calculate_irr,
     calculate_lcos,
     calculate_npv,
@@ -22,12 +23,14 @@ from src.models.calculations import (
 )
 from src.models.project import (
     BenefitStream,
+    BuildSchedule,
     CostInputs,
     FinancialResults,
     FinancingInputs,
     Project,
     ProjectBasics,
     SpecialBenefitInputs,
+    TDDeferralInputs,
     TechnologySpecs,
 )
 from src.data.validators import (
@@ -1201,3 +1204,288 @@ class TestSpecialBenefits:
             assert loaded.costs.bulk_discount_rate == 0.05
         finally:
             os.unlink(path)
+
+
+# ---- Build Schedule Tests ----
+
+class TestBuildSchedule:
+    def test_build_schedule_defaults(self):
+        """Empty build schedule should have no tranches."""
+        bs = BuildSchedule()
+        assert bs.tranches == []
+        assert bs.total_capacity_mw == 0
+
+    def test_build_schedule_total_capacity(self):
+        """Total capacity should sum all tranche capacities."""
+        bs = BuildSchedule(tranches=[(2027, 5.0), (2028, 5.0), (2029, 5.0)])
+        assert abs(bs.total_capacity_mw - 15.0) < 0.01
+
+    def test_build_schedule_cod_years(self):
+        """First and last COD year properties."""
+        bs = BuildSchedule(tranches=[(2028, 5.0), (2027, 5.0), (2030, 5.0)])
+        assert bs.first_cod_year == 2027
+        assert bs.last_cod_year == 2030
+
+    def test_build_schedule_validation_negative_mw(self):
+        """Negative capacity should raise ValueError."""
+        with pytest.raises(ValueError, match="capacity_mw must be > 0"):
+            BuildSchedule(tranches=[(2027, -5.0)])
+
+    def test_build_schedule_validation_bad_year(self):
+        """Year outside 2020-2060 should raise ValueError."""
+        with pytest.raises(ValueError, match="cod_year must be 2020-2060"):
+            BuildSchedule(tranches=[(2010, 5.0)])
+
+    def test_build_schedule_serialization(self):
+        """Round-trip serialization via to_dict/from_dict."""
+        bs = BuildSchedule(tranches=[(2027, 5.0), (2028, 10.0)])
+        data = bs.to_dict()
+        bs2 = BuildSchedule.from_dict(data)
+        assert bs2.tranches == [(2027, 5.0), (2028, 10.0)]
+        assert abs(bs2.total_capacity_mw - 15.0) < 0.01
+
+
+# ---- T&D Deferral Tests ----
+
+class TestTDDeferral:
+    def test_td_deferral_pv_basic(self):
+        """PV = K * [1 - ((1+g)/(1+r))^n] with known values."""
+        td = TDDeferralInputs(
+            deferred_capital_cost=10_000_000,
+            load_growth_rate=0.01,
+            discount_rate=0.07,
+            deferral_years=5,
+        )
+        pv = td.calculate_deferral_pv()
+        # ratio = 1.01/1.07 = 0.9439...
+        # PV = 10M * (1 - 0.9439^5) = 10M * (1 - 0.7497) = 10M * 0.2503 = $2.503M
+        assert pv > 2_000_000
+        assert pv < 3_000_000
+
+    def test_td_deferral_pv_zero_capital(self):
+        """Zero capital cost should give zero PV."""
+        td = TDDeferralInputs(deferred_capital_cost=0.0)
+        assert td.calculate_deferral_pv() == 0.0
+
+    def test_td_deferral_pv_zero_years(self):
+        """Zero deferral years should give zero PV."""
+        td = TDDeferralInputs(deferred_capital_cost=10_000_000, deferral_years=0)
+        assert td.calculate_deferral_pv() == 0.0
+
+    def test_td_deferral_serialization(self):
+        """Round-trip serialization."""
+        td = TDDeferralInputs(
+            deferred_capital_cost=5_000_000,
+            load_growth_rate=0.02,
+            discount_rate=0.08,
+            deferral_years=3,
+        )
+        data = td.to_dict()
+        td2 = TDDeferralInputs.from_dict(data)
+        assert abs(td2.deferred_capital_cost - 5_000_000) < 0.01
+        assert abs(td2.calculate_deferral_pv() - td.calculate_deferral_pv()) < 0.01
+
+
+# ---- Multi-Tranche Cohort Tests ----
+
+class TestMultiTranche:
+    def _make_single_tranche_project(self):
+        """Standard 15 MW, 4hr single tranche for comparison."""
+        basics = ProjectBasics(
+            name="Single Tranche Test",
+            capacity_mw=15,
+            duration_hours=4,
+            in_service_date=date(2027, 1, 1),
+            analysis_period_years=20,
+            discount_rate=0.07,
+        )
+        tech = TechnologySpecs(
+            round_trip_efficiency=0.85,
+            degradation_rate_annual=0.025,
+            augmentation_year=12,
+        )
+        costs = CostInputs(
+            capex_per_kwh=200,
+            fom_per_kw_year=25,
+            learning_rate=0.05,
+            cost_base_year=2024,
+        )
+        ra_values = [2_000_000] * 20
+        benefits = [BenefitStream(name="RA", annual_values=ra_values)]
+        return Project(basics=basics, technology=tech, costs=costs, benefits=benefits)
+
+    def _make_multi_tranche_project(self):
+        """15 MW in 3 tranches: [(2027,5), (2028,5), (2029,5)]."""
+        project = self._make_single_tranche_project()
+        project.build_schedule = BuildSchedule(
+            tranches=[(2027, 5.0), (2028, 5.0), (2029, 5.0)]
+        )
+        return project
+
+    def test_single_tranche_backward_compatible(self):
+        """Project without build_schedule produces same results as before."""
+        project = self._make_single_tranche_project()
+        results = calculate_project_economics(project)
+        assert results.num_tranches == 1
+        assert results.flexibility_value == 0.0
+        assert results.bcr > 0
+
+    def test_single_tranche_no_learning_on_capex(self):
+        """Single tranche should use base capex, not learning-curve adjusted."""
+        project = self._make_single_tranche_project()
+        results = calculate_project_economics(project)
+        # Base capex: $200/kWh * 60,000 kWh = $12M battery
+        battery_capex = 200 * 15 * 4 * 1000  # $12M
+        infra = (100 + 10 + 15) * 15_000  # $1.875M
+        total = battery_capex + infra
+        itc = battery_capex * 0.30
+        expected_year0 = total - itc
+        assert abs(results.annual_costs[0] - expected_year0) < 1.0
+
+    def test_multi_tranche_num_tranches(self):
+        """Multi-tranche should report correct number of tranches."""
+        project = self._make_multi_tranche_project()
+        results = calculate_project_economics(project)
+        assert results.num_tranches == 3
+
+    def test_multi_tranche_capex_reflects_learning_curve(self):
+        """Each cohort CapEx should use learning curve at its COD year."""
+        project = self._make_multi_tranche_project()
+        results = calculate_project_economics(project)
+        # Cohort 1 (2027): 200 * (1-0.05)^(2027-2024) = 200 * 0.95^3 = 171.475
+        # Cohort 2 (2028): 200 * 0.95^4 = 162.90
+        # Cohort 3 (2029): 200 * 0.95^5 = 154.76
+        assert len(results.cohort_capex) == 3
+        # Later cohorts should be cheaper
+        assert results.cohort_capex[0] > results.cohort_capex[1]
+        assert results.cohort_capex[1] > results.cohort_capex[2]
+
+    def test_multi_tranche_later_tranches_cheaper(self):
+        """Total phased cost should differ from building all at once."""
+        multi = self._make_multi_tranche_project()
+        multi_results = calculate_project_economics(multi)
+
+        single = self._make_single_tranche_project()
+        single_results = calculate_project_economics(single)
+
+        # Phased build has different cost structure (later tranches cheaper but
+        # come online later with less operating time in analysis period)
+        assert multi_results.pv_costs != single_results.pv_costs
+
+    def test_multi_tranche_annual_arrays_length(self):
+        """Annual arrays should still have n+1 entries."""
+        project = self._make_multi_tranche_project()
+        results = calculate_project_economics(project)
+        assert len(results.annual_costs) == 21
+        assert len(results.annual_benefits) == 21
+        assert len(results.annual_net) == 21
+
+    def test_multi_tranche_year0_no_benefits(self):
+        """Year 0 should have no benefits."""
+        project = self._make_multi_tranche_project()
+        results = calculate_project_economics(project)
+        assert results.annual_benefits[0] == 0.0
+
+    def test_multi_tranche_year0_has_first_cohort_capex(self):
+        """Year 0 should have first cohort's CapEx only."""
+        project = self._make_multi_tranche_project()
+        results = calculate_project_economics(project)
+        # Year 0 cost should be nonzero (first cohort CapEx)
+        assert results.annual_costs[0] > 0
+        # Year 1 should have second cohort's CapEx + first cohort's operating costs
+        assert results.annual_costs[1] > 0
+
+    def test_multi_tranche_augmentation_staged(self):
+        """Augmentation should occur at different years for each cohort."""
+        # Compare with and without augmentation to isolate augmentation costs
+        project = self._make_multi_tranche_project()
+        results_with_aug = calculate_project_economics(project)
+
+        # Create a version with no augmentation (augmentation year > analysis period)
+        project_no_aug = self._make_multi_tranche_project()
+        project_no_aug.technology.augmentation_year = 99  # Never triggers
+        # Need to bypass validation
+        project_no_aug.technology.__dict__['augmentation_year'] = 99
+        results_no_aug = calculate_project_economics(project_no_aug)
+
+        # Augmentation should add cost at years 12, 13, 14 (offset + aug_year)
+        for aug_year in [12, 13, 14]:
+            if aug_year <= 20:
+                diff = results_with_aug.annual_costs[aug_year] - results_no_aug.annual_costs[aug_year]
+                assert diff > 0, f"Year {aug_year} should have augmentation cost"
+
+    def test_multi_tranche_bcr_reasonable(self):
+        """Multi-tranche BCR should be reasonable (0.5 - 5.0)."""
+        project = self._make_multi_tranche_project()
+        results = calculate_project_economics(project)
+        assert 0.5 < results.bcr < 5.0
+
+    def test_flexibility_value_positive_with_learning(self):
+        """Flexibility Value should be positive when learning rate > 0."""
+        project = self._make_multi_tranche_project()
+        flex = calculate_flexibility_value(project)
+        assert flex > 0
+
+    def test_flexibility_value_zero_single_tranche(self):
+        """Single tranche should have 0 flexibility value."""
+        project = self._make_single_tranche_project()
+        flex = calculate_flexibility_value(project)
+        assert flex == 0.0
+
+    def test_flexibility_value_in_results(self):
+        """Flexibility value should appear in results for multi-tranche."""
+        project = self._make_multi_tranche_project()
+        results = calculate_project_economics(project)
+        assert results.flexibility_value > 0
+
+    def test_td_deferral_in_results(self):
+        """T&D deferral PV should be included in results."""
+        project = self._make_single_tranche_project()
+        project.td_deferral = TDDeferralInputs(
+            deferred_capital_cost=10_000_000,
+            load_growth_rate=0.01,
+            discount_rate=0.07,
+            deferral_years=5,
+        )
+        results = calculate_project_economics(project)
+        assert results.td_deferral_pv > 0
+
+    def test_no_build_schedule_backward_compatible(self):
+        """Project loaded from legacy JSON (no build_schedule) works."""
+        project = self._make_single_tranche_project()
+        data = project.to_dict()
+        # Simulate legacy JSON: remove build_schedule
+        assert data.get("build_schedule") is None
+        loaded = Project.from_dict(data)
+        results = calculate_project_economics(loaded)
+        assert results.bcr > 0
+
+    def test_multi_tranche_serialization_roundtrip(self):
+        """Project with build_schedule should save/load correctly."""
+        project = self._make_multi_tranche_project()
+        project.td_deferral = TDDeferralInputs(
+            deferred_capital_cost=5_000_000,
+            load_growth_rate=0.02,
+            discount_rate=0.08,
+            deferral_years=3,
+        )
+        data = project.to_dict()
+        loaded = Project.from_dict(data)
+        assert loaded.build_schedule is not None
+        assert len(loaded.build_schedule.tranches) == 3
+        assert loaded.td_deferral is not None
+        assert abs(loaded.td_deferral.deferred_capital_cost - 5_000_000) < 0.01
+
+        # Results should be identical
+        r1 = calculate_project_economics(project)
+        r2 = calculate_project_economics(loaded)
+        assert abs(r1.bcr - r2.bcr) < 0.001
+
+    def test_multi_tranche_benefits_scale_with_online_capacity(self):
+        """Benefits in year 1 should be lower than year 3 (not all online yet)."""
+        project = self._make_multi_tranche_project()
+        results = calculate_project_economics(project)
+        # Year 1: only first cohort online (5/15 MW)
+        # Year 3: all three cohorts online (15/15 MW, with some degradation)
+        # Benefits at year 3 should be higher than year 1
+        assert results.annual_benefits[3] > results.annual_benefits[1]

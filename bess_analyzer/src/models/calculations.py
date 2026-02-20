@@ -12,12 +12,14 @@ import numpy_financial as npf
 
 from src.models.project import (
     BenefitStream,
+    BuildSchedule,
     CostInputs,
     FinancialResults,
     FinancingInputs,
     Project,
     ProjectBasics,
     SpecialBenefitInputs,
+    TDDeferralInputs,
     TechnologySpecs,
     UOSInputs,
 )
@@ -189,160 +191,264 @@ def _get_bulk_discount_factor(project: Project) -> float:
     return 1.0
 
 
+def _calculate_cohort_costs(
+    cod_year: int,
+    capacity_mw: float,
+    duration_hours: float,
+    tech: TechnologySpecs,
+    costs: CostInputs,
+    n: int,
+    global_year_0: int,
+    bulk_discount: float,
+    apply_learning_curve_capex: bool = False,
+) -> tuple:
+    """Compute annual costs for a single cohort/tranche.
+
+    Args:
+        cod_year: Calendar year this cohort comes online.
+        capacity_mw: This cohort's power capacity (MW).
+        duration_hours: Storage duration (hours).
+        tech: Technology specifications.
+        costs: Cost input parameters.
+        n: Total analysis period years.
+        global_year_0: Calendar year of the earliest tranche (analysis year 0).
+        bulk_discount: Bulk discount multiplier (e.g., 0.95 for 5% discount).
+        apply_learning_curve_capex: If True, apply learning curve to initial CapEx.
+            Used for multi-tranche projects. Single-tranche uses base capex for
+            backward compatibility.
+
+    Returns:
+        Tuple of (annual_costs list[0..N], cohort_capex_total float).
+    """
+    offset = cod_year - global_year_0  # Year within analysis when cohort comes online
+    capacity_kw = capacity_mw * 1000
+    capacity_mwh = capacity_mw * duration_hours
+    capacity_kwh = capacity_mwh * 1000
+
+    cohort_costs = [0.0] * (n + 1)
+
+    # CapEx: apply learning curve only for multi-tranche projects
+    if apply_learning_curve_capex:
+        capex_per_kwh = costs.get_capex_at_year(cod_year)
+    else:
+        capex_per_kwh = costs.capex_per_kwh
+    battery_capex = capex_per_kwh * capacity_kwh * bulk_discount
+
+    # Infrastructure costs
+    interconnection_cost = costs.interconnection_per_kw * capacity_kw * bulk_discount
+    land_cost = costs.land_per_kw * capacity_kw * bulk_discount
+    permitting_cost = costs.permitting_per_kw * capacity_kw * bulk_discount
+    infrastructure_costs = interconnection_cost + land_cost + permitting_cost
+
+    total_capex = battery_capex + infrastructure_costs
+
+    # ITC on battery only
+    total_itc_rate = costs.itc_percent + costs.itc_adders
+    itc_credit = battery_capex * total_itc_rate
+
+    # Place CapEx at cohort offset year
+    if offset <= n:
+        cohort_costs[offset] = total_capex - itc_credit
+
+    # Operating costs from cohort_offset+1 through N
+    for t in range(offset + 1, n + 1):
+        years_operating = t - offset  # years since this cohort's COD
+
+        # Fixed O&M
+        cohort_costs[t] += costs.fom_per_kw_year * capacity_kw * bulk_discount
+
+        # Variable O&M + Charging (with cohort-specific degradation)
+        degradation_factor = (1 - tech.degradation_rate_annual) ** (years_operating - 1)
+        annual_discharge_mwh = (
+            capacity_mwh * tech.cycles_per_day * 365 * tech.round_trip_efficiency * degradation_factor
+        )
+        cohort_costs[t] += costs.vom_per_mwh * annual_discharge_mwh
+        annual_charge_mwh = annual_discharge_mwh / tech.round_trip_efficiency
+        cohort_costs[t] += costs.charging_cost_per_mwh * annual_charge_mwh
+
+        # Insurance
+        cohort_costs[t] += total_capex * costs.insurance_pct_of_capex
+
+        # Property tax on remaining book value
+        remaining_value = total_capex * max(0, 1 - years_operating / n)
+        cohort_costs[t] += remaining_value * costs.property_tax_pct
+
+    # Augmentation relative to cohort COD
+    aug_year = offset + tech.augmentation_year
+    if 1 <= aug_year <= n:
+        adjusted_aug_cost = costs.get_augmentation_cost(tech.augmentation_year) * bulk_discount
+        cohort_costs[aug_year] += adjusted_aug_cost * capacity_kwh
+
+    # Decommissioning at end of analysis
+    decommissioning_cost = costs.decommissioning_per_kw * capacity_kw
+    residual_value = total_capex * costs.residual_value_pct
+    cohort_costs[n] += decommissioning_cost - residual_value
+
+    return cohort_costs, total_capex
+
+
+def _calculate_cohort_energy(
+    cod_year: int,
+    capacity_mw: float,
+    duration_hours: float,
+    tech: TechnologySpecs,
+    n: int,
+    global_year_0: int,
+) -> List[float]:
+    """Compute annual energy discharged for a single cohort."""
+    offset = cod_year - global_year_0
+    capacity_mwh = capacity_mw * duration_hours
+    energy = [0.0] * (n + 1)
+    for t in range(offset + 1, n + 1):
+        years_operating = t - offset
+        degradation_factor = (1 - tech.degradation_rate_annual) ** (years_operating - 1)
+        energy[t] = capacity_mwh * tech.cycles_per_day * 365 * tech.round_trip_efficiency * degradation_factor
+    return energy
+
+
+def _get_effective_capacity_ratios(
+    tranches: List[tuple],
+    tech: TechnologySpecs,
+    n: int,
+    global_year_0: int,
+    total_capacity_mw: float,
+) -> List[float]:
+    """Compute effective capacity ratio at each year for benefit scaling.
+
+    For each analysis year, sums the effective (degraded) capacity of all
+    online cohorts, divided by total nominal capacity. For single-tranche
+    projects this equals the standard degradation factor.
+
+    Returns:
+        List of ratios [0..N], where ratio[0] = 0 (no benefits at year 0).
+    """
+    ratios = [0.0] * (n + 1)
+    for t in range(1, n + 1):
+        effective_mw = 0.0
+        for cod_year, cap_mw in tranches:
+            offset = cod_year - global_year_0
+            if t > offset:
+                years_operating = t - offset
+                degradation = (1 - tech.degradation_rate_annual) ** (years_operating - 1)
+                effective_mw += cap_mw * degradation
+        ratios[t] = effective_mw / total_capacity_mw if total_capacity_mw > 0 else 0.0
+    return ratios
+
+
 def calculate_project_economics(project: Project) -> FinancialResults:
     """Run complete economic analysis on a BESS project.
 
-    Calculation workflow:
-        1. Build annual cost stream (Year 0: CapEx; Years 1-N: O&M + charging;
-           augmentation year: battery replacement; Year N: decommissioning - residual).
-        2. Aggregate annual benefit streams from all BenefitStream objects.
-        3. Apply degradation to energy-based calculations.
-        4. Discount all cash flows to present value using WACC or discount rate.
-        5. Calculate NPV, BCR, IRR, payback, LCOS, and breakeven CapEx.
+    Supports both single-asset and multi-tranche (JIT cohort) models.
+    When a build_schedule is provided, costs are computed per-cohort with
+    learning-curve-adjusted CapEx and cohort-specific degradation/augmentation.
+    Benefits are scaled by effective online capacity at each year.
 
     Args:
         project: Complete Project object with all inputs populated.
 
     Returns:
         FinancialResults with all calculated metrics.
-
-    Source:
-        Methodology follows NREL's Storage Futures Study (2021) and
-        CPUC Standard Practice Manual (2001) frameworks.
     """
     basics = project.basics
     tech = project.technology
     costs = project.costs
     n = basics.analysis_period_years
-    # Use WACC if financing structure provided, otherwise use discount_rate
     r = project.get_discount_rate()
 
-    capacity_kw = basics.capacity_mw * 1000
-    capacity_kwh = basics.capacity_mwh * 1000
+    total_capacity_mw = basics.capacity_mw
+    total_capacity_kw = total_capacity_mw * 1000
+    total_capacity_kwh = basics.capacity_mwh * 1000
 
-    # Calculate bulk discount factor for fleet purchases
     bulk_discount = _get_bulk_discount_factor(project)
 
-    # --- Build annual cost stream ---
+    # Get tranches (single or multi)
+    tranches = project.get_effective_tranches()
+    is_multi = project.is_multi_tranche()
+    global_year_0 = min(y for y, _ in tranches)
+
+    # --- Aggregate costs across cohorts ---
     annual_costs = [0.0] * (n + 1)
+    annual_energy = [0.0] * (n + 1)
+    cohort_capex_list = []
 
-    # Year 0: Capital expenditure (battery system) with bulk discount
-    battery_capex = costs.capex_per_kwh * capacity_kwh * bulk_discount
-
-    # Year 0: Infrastructure costs (common to all utility projects) with bulk discount
-    interconnection_cost = costs.interconnection_per_kw * capacity_kw * bulk_discount
-    land_cost = costs.land_per_kw * capacity_kw * bulk_discount
-    permitting_cost = costs.permitting_per_kw * capacity_kw * bulk_discount
-    infrastructure_costs = interconnection_cost + land_cost + permitting_cost
-
-    # Total pre-ITC CapEx
-    total_capex = battery_capex + infrastructure_costs
-
-    # Apply Investment Tax Credit (BESS-specific under IRA)
-    # ITC applies only to the battery system, not infrastructure
-    total_itc_rate = costs.itc_percent + costs.itc_adders
-    itc_credit = battery_capex * total_itc_rate
-
-    # Year 0 net capital cost (after ITC)
-    annual_costs[0] = total_capex - itc_credit
-
-    # Years 1-N: Fixed O&M with bulk discount
-    for t in range(1, n + 1):
-        annual_costs[t] += costs.fom_per_kw_year * capacity_kw * bulk_discount
-
-    # Years 1-N: Variable O&M + Charging costs (based on annual discharge energy)
-    # Uses cycles_per_day instead of hardcoded 1 cycle
-    for t in range(1, n + 1):
-        degradation_factor = (1 - tech.degradation_rate_annual) ** (t - 1)
-        annual_discharge_mwh = (
-            basics.capacity_mwh * tech.cycles_per_day * 365 * tech.round_trip_efficiency * degradation_factor
+    for cod_year, cap_mw in tranches:
+        cohort_costs, cohort_total_capex = _calculate_cohort_costs(
+            cod_year, cap_mw, basics.duration_hours,
+            tech, costs, n, global_year_0, bulk_discount,
+            apply_learning_curve_capex=is_multi,
         )
-        annual_costs[t] += costs.vom_per_mwh * annual_discharge_mwh
-
-        # Charging cost: energy needed to charge = discharge / RTE
-        annual_charge_mwh = annual_discharge_mwh / tech.round_trip_efficiency
-        annual_costs[t] += costs.charging_cost_per_mwh * annual_charge_mwh
-
-    # Years 1-N: Insurance (common to all utility projects)
-    # Based on percentage of total CapEx
-    annual_insurance = total_capex * costs.insurance_pct_of_capex
-    for t in range(1, n + 1):
-        annual_costs[t] += annual_insurance
-
-    # Years 1-N: Property taxes (common to all utility projects)
-    # Based on percentage of depreciating asset value (straight-line)
-    for t in range(1, n + 1):
-        # Simplified: property tax on remaining book value (straight-line depreciation)
-        remaining_value = total_capex * (1 - t / n)
-        annual_costs[t] += remaining_value * costs.property_tax_pct
-
-    # Augmentation year: battery replacement cost (adjusted for learning curve + bulk discount)
-    # Cost declines at learning_rate annually from base year
-    aug_year = tech.augmentation_year
-    if 1 <= aug_year <= n:
-        # Get augmentation cost adjusted for technology cost decline and bulk discount
-        adjusted_aug_cost = costs.get_augmentation_cost(aug_year) * bulk_discount
-        annual_costs[aug_year] += adjusted_aug_cost * capacity_kwh
-
-    # Final year: decommissioning minus residual value
-    decommissioning_cost = costs.decommissioning_per_kw * capacity_kw
-    residual_value = total_capex * costs.residual_value_pct
-    annual_costs[n] += decommissioning_cost - residual_value
+        cohort_energy = _calculate_cohort_energy(
+            cod_year, cap_mw, basics.duration_hours,
+            tech, n, global_year_0,
+        )
+        for t in range(n + 1):
+            annual_costs[t] += cohort_costs[t]
+            annual_energy[t] += cohort_energy[t]
+        cohort_capex_list.append(cohort_total_capex)
 
     # --- Build annual benefit stream ---
+    # For multi-tranche: scale benefits by effective capacity ratio to account
+    # for phased deployment. For single-tranche: use values as-is (backward compat).
+    if is_multi:
+        capacity_ratios = _get_effective_capacity_ratios(
+            tranches, tech, n, global_year_0, total_capacity_mw,
+        )
+    else:
+        # Single tranche: no scaling on standard benefits (preserves original behavior)
+        capacity_ratios = [0.0] + [1.0] * n
+
     annual_benefits = [0.0] * (n + 1)
     benefit_pvs = {}
 
     for benefit in project.benefits:
         for t in range(1, n + 1):
             if t - 1 < len(benefit.annual_values):
-                val = benefit.annual_values[t - 1]
+                val = benefit.annual_values[t - 1] * capacity_ratios[t]
             else:
                 val = 0.0
             annual_benefits[t] += val
 
-        # Calculate PV for this benefit category
         pv_this = sum(
             (benefit.annual_values[t - 1] if t - 1 < len(benefit.annual_values) else 0.0)
-            / (1 + r) ** t
+            * capacity_ratios[t] / (1 + r) ** t
             for t in range(1, n + 1)
         )
         benefit_pvs[benefit.name] = pv_this
 
     # --- Process special benefits (formula-based) ---
+    # For single-tranche, use original degradation pattern for reliability.
+    # For multi-tranche, use capacity_ratios which encodes per-cohort degradation.
     special = project.special_benefits
     if special:
-        # Reliability Benefits (annual, with degradation)
         if special.reliability_enabled:
             reliability_base = special.calculate_reliability_annual(basics.capacity_mwh)
-            for t in range(1, n + 1):
-                # Apply battery degradation to reliability benefit
-                degradation_factor = (1 - tech.degradation_rate_annual) ** (t - 1)
-                annual_benefits[t] += reliability_base * degradation_factor
-
-            # Calculate PV for benefit breakdown
-            pv_reliability = sum(
-                reliability_base * (1 - tech.degradation_rate_annual) ** (t - 1) / (1 + r) ** t
-                for t in range(1, n + 1)
-            )
+            if is_multi:
+                for t in range(1, n + 1):
+                    annual_benefits[t] += reliability_base * capacity_ratios[t]
+                pv_reliability = sum(
+                    reliability_base * capacity_ratios[t] / (1 + r) ** t
+                    for t in range(1, n + 1)
+                )
+            else:
+                for t in range(1, n + 1):
+                    degradation_factor = (1 - tech.degradation_rate_annual) ** (t - 1)
+                    annual_benefits[t] += reliability_base * degradation_factor
+                pv_reliability = sum(
+                    reliability_base * (1 - tech.degradation_rate_annual) ** (t - 1) / (1 + r) ** t
+                    for t in range(1, n + 1)
+                )
             benefit_pvs["Reliability (Avoided Outage)"] = pv_reliability
 
-        # Safety Benefits (annual, constant - no degradation)
         if special.safety_enabled:
             safety_annual = special.calculate_safety_annual(basics.capacity_mw)
             for t in range(1, n + 1):
                 annual_benefits[t] += safety_annual
-
-            # Calculate PV for benefit breakdown
             pv_safety = sum(safety_annual / (1 + r) ** t for t in range(1, n + 1))
             benefit_pvs["Safety (Avoided Incident)"] = pv_safety
 
-        # Speed-to-Serve Benefits (ONE-TIME in Year 1 only)
         if special.speed_enabled:
-            speed_onetime = special.calculate_speed_onetime(capacity_kw)
+            speed_onetime = special.calculate_speed_onetime(total_capacity_kw)
             annual_benefits[1] += speed_onetime
-
-            # PV is just the discounted Year 1 value
             pv_speed = speed_onetime / (1 + r)
             benefit_pvs["Speed-to-Serve (One-time)"] = pv_speed
 
@@ -351,37 +457,31 @@ def calculate_project_economics(project: Project) -> FinancialResults:
     pv_benefits = sum(b / (1 + r) ** t for t, b in enumerate(annual_benefits))
     npv = pv_benefits - pv_costs
 
-    # BCR
     bcr = calculate_bcr(pv_benefits, pv_costs) if pv_costs > 0 else 0.0
 
-    # Net cash flows for IRR and payback
     annual_net = [annual_benefits[t] - annual_costs[t] for t in range(n + 1)]
     irr = calculate_irr(annual_net)
     payback = _calculate_payback(annual_net)
 
-    # LCOS
-    annual_energy = [0.0] * (n + 1)
-    for t in range(1, n + 1):
-        degradation_factor = (1 - tech.degradation_rate_annual) ** (t - 1)
-        annual_energy[t] = (
-            basics.capacity_mwh * tech.cycles_per_day * 365 * tech.round_trip_efficiency * degradation_factor
-        )
     lcos = calculate_lcos(annual_costs, annual_energy, r)
 
-    # Breakeven CapEx: the CapEx/kWh where BCR = 1.0
-    # BCR=1 means PV_benefits = PV_costs
-    # PV_costs = capex * capacity_kwh + PV_other_costs
-    # So breakeven_capex = (PV_benefits - PV_other_costs) / capacity_kwh
-    pv_other_costs = sum(c / (1 + r) ** t for t, c in enumerate(annual_costs)) - (
-        annual_costs[0] / (1 + r) ** 0
-    )
-    breakeven_capex = (pv_benefits - pv_other_costs) / capacity_kwh if capacity_kwh > 0 else 0.0
+    pv_other_costs = pv_costs - annual_costs[0]  # PV of non-CapEx costs
+    breakeven_capex = (pv_benefits - pv_other_costs) / total_capacity_kwh if total_capacity_kwh > 0 else 0.0
 
-    # Benefit breakdown (percentage of total PV)
     benefit_breakdown = {}
     if pv_benefits > 0:
         for name, pv_val in benefit_pvs.items():
             benefit_breakdown[name] = (pv_val / pv_benefits) * 100
+
+    # T&D deferral PV
+    td_pv = 0.0
+    if project.td_deferral:
+        td_pv = project.td_deferral.calculate_deferral_pv()
+
+    # Flexibility value (multi-tranche only)
+    flex_value = 0.0
+    if project.is_multi_tranche():
+        flex_value = calculate_flexibility_value(project)
 
     return FinancialResults(
         pv_benefits=pv_benefits,
@@ -396,7 +496,72 @@ def calculate_project_economics(project: Project) -> FinancialResults:
         annual_costs=annual_costs,
         annual_benefits=annual_benefits,
         annual_net=annual_net,
+        flexibility_value=flex_value,
+        td_deferral_pv=td_pv,
+        cohort_capex=cohort_capex_list,
+        num_tranches=len(tranches),
     )
+
+
+def calculate_flexibility_value(project: Project) -> float:
+    """Calculate Flexibility Value = PV(cost_upfront) - PV(cost_phased).
+
+    Compares building all capacity at the earliest COD year vs the
+    actual phased build schedule. The difference represents the value
+    of flexibility from deferred capital and learning curve savings.
+
+    Args:
+        project: Project with multi-tranche build schedule.
+
+    Returns:
+        Flexibility value in $. Positive when phased is cheaper.
+    """
+    if not project.is_multi_tranche():
+        return 0.0
+
+    # Create upfront variant: all capacity at first COD year
+    tranches = project.get_effective_tranches()
+    first_year = min(y for y, _ in tranches)
+    total_mw = sum(mw for _, mw in tranches)
+
+    upfront_schedule = BuildSchedule(tranches=[(first_year, total_mw)])
+
+    # Clone project with upfront schedule
+    data = project.to_dict()
+    upfront_project = Project.from_dict(data)
+    upfront_project.build_schedule = upfront_schedule
+
+    # Calculate costs for both scenarios (avoid infinite recursion by
+    # computing costs directly without calling calculate_project_economics)
+    r = project.get_discount_rate()
+    n = project.basics.analysis_period_years
+    bulk_discount = _get_bulk_discount_factor(project)
+
+    # Upfront costs (learning curve applied since this is multi-tranche context)
+    upfront_costs = [0.0] * (n + 1)
+    for cod_year, cap_mw in upfront_schedule.tranches:
+        cohort_costs, _ = _calculate_cohort_costs(
+            cod_year, cap_mw, project.basics.duration_hours,
+            project.technology, project.costs, n, first_year, bulk_discount,
+            apply_learning_curve_capex=True,
+        )
+        for t in range(n + 1):
+            upfront_costs[t] += cohort_costs[t]
+    pv_upfront = sum(c / (1 + r) ** t for t, c in enumerate(upfront_costs))
+
+    # Phased costs
+    phased_costs = [0.0] * (n + 1)
+    for cod_year, cap_mw in tranches:
+        cohort_costs, _ = _calculate_cohort_costs(
+            cod_year, cap_mw, project.basics.duration_hours,
+            project.technology, project.costs, n, first_year, bulk_discount,
+            apply_learning_curve_capex=True,
+        )
+        for t in range(n + 1):
+            phased_costs[t] += cohort_costs[t]
+    pv_phased = sum(c / (1 + r) ** t for t, c in enumerate(phased_costs))
+
+    return pv_upfront - pv_phased
 
 
 def calculate_uos_analysis(project: Project) -> dict:
