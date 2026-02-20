@@ -14,6 +14,7 @@ Usage:
 """
 
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import xlsxwriter
@@ -432,5 +433,7 @@ def create_results_sheet(workbook, ws, formats, cf_totals_row):
         row += 1
 
 if __name__ == '__main__':
-    output_file = sys.argv[1] if len(sys.argv) > 1 else 'BESS_Analyzer_JIT.xlsm'
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M')
+    default_name = f'BESS_Analyzer_v2.0_{timestamp}.xlsx'
+    output_file = sys.argv[1] if len(sys.argv) > 1 else default_name
     create_workbook(output_file)
