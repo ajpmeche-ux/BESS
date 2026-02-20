@@ -24,13 +24,15 @@ from src.models.calculations import (
 from src.models.project import (
     BenefitStream,
     BuildSchedule,
+    BuildTranche,
     CostInputs,
     FinancialResults,
     FinancingInputs,
     Project,
     ProjectBasics,
     SpecialBenefitInputs,
-    TDDeferralInputs,
+    TDDeferralSchedule,
+    TDDeferralTranche,
     TechnologySpecs,
 )
 from src.data.validators import (
@@ -1217,31 +1219,36 @@ class TestBuildSchedule:
 
     def test_build_schedule_total_capacity(self):
         """Total capacity should sum all tranche capacities."""
-        bs = BuildSchedule(tranches=[(2027, 5.0), (2028, 5.0), (2029, 5.0)])
+        bs = BuildSchedule(tranches=[
+            BuildTranche(2027, 5.0), BuildTranche(2028, 5.0), BuildTranche(2029, 5.0),
+        ])
         assert abs(bs.total_capacity_mw - 15.0) < 0.01
 
     def test_build_schedule_cod_years(self):
         """First and last COD year properties."""
-        bs = BuildSchedule(tranches=[(2028, 5.0), (2027, 5.0), (2030, 5.0)])
+        bs = BuildSchedule(tranches=[
+            BuildTranche(2028, 5.0), BuildTranche(2027, 5.0), BuildTranche(2030, 5.0),
+        ])
         assert bs.first_cod_year == 2027
         assert bs.last_cod_year == 2030
 
     def test_build_schedule_validation_negative_mw(self):
         """Negative capacity should raise ValueError."""
         with pytest.raises(ValueError, match="capacity_mw must be > 0"):
-            BuildSchedule(tranches=[(2027, -5.0)])
+            BuildTranche(2027, -5.0)
 
     def test_build_schedule_validation_bad_year(self):
         """Year outside 2020-2060 should raise ValueError."""
         with pytest.raises(ValueError, match="cod_year must be 2020-2060"):
-            BuildSchedule(tranches=[(2010, 5.0)])
+            BuildTranche(2010, 5.0)
 
     def test_build_schedule_serialization(self):
         """Round-trip serialization via to_dict/from_dict."""
-        bs = BuildSchedule(tranches=[(2027, 5.0), (2028, 10.0)])
+        bs = BuildSchedule(tranches=[BuildTranche(2027, 5.0), BuildTranche(2028, 10.0)])
         data = bs.to_dict()
         bs2 = BuildSchedule.from_dict(data)
-        assert bs2.tranches == [(2027, 5.0), (2028, 10.0)]
+        assert bs2.tranches[0].cod_year == 2027
+        assert bs2.tranches[1].capacity_mw == 10.0
         assert abs(bs2.total_capacity_mw - 15.0) < 0.01
 
 
@@ -1250,13 +1257,12 @@ class TestBuildSchedule:
 class TestTDDeferral:
     def test_td_deferral_pv_basic(self):
         """PV = K * [1 - ((1+g)/(1+r))^n] with known values."""
-        td = TDDeferralInputs(
+        td = TDDeferralTranche(
             deferred_capital_cost=10_000_000,
             load_growth_rate=0.01,
-            discount_rate=0.07,
             deferral_years=5,
         )
-        pv = td.calculate_deferral_pv()
+        pv = td.calculate_deferral_pv(discount_rate=0.07)
         # ratio = 1.01/1.07 = 0.9439...
         # PV = 10M * (1 - 0.9439^5) = 10M * (1 - 0.7497) = 10M * 0.2503 = $2.503M
         assert pv > 2_000_000
@@ -1264,26 +1270,23 @@ class TestTDDeferral:
 
     def test_td_deferral_pv_zero_capital(self):
         """Zero capital cost should give zero PV."""
-        td = TDDeferralInputs(deferred_capital_cost=0.0)
-        assert td.calculate_deferral_pv() == 0.0
+        td = TDDeferralTranche(deferred_capital_cost=0.0)
+        assert td.calculate_deferral_pv(discount_rate=0.07) == 0.0
 
     def test_td_deferral_pv_zero_years(self):
         """Zero deferral years should give zero PV."""
-        td = TDDeferralInputs(deferred_capital_cost=10_000_000, deferral_years=0)
-        assert td.calculate_deferral_pv() == 0.0
+        td = TDDeferralTranche(deferred_capital_cost=10_000_000, deferral_years=0)
+        assert td.calculate_deferral_pv(discount_rate=0.07) == 0.0
 
     def test_td_deferral_serialization(self):
-        """Round-trip serialization."""
-        td = TDDeferralInputs(
-            deferred_capital_cost=5_000_000,
-            load_growth_rate=0.02,
-            discount_rate=0.08,
-            deferral_years=3,
-        )
-        data = td.to_dict()
-        td2 = TDDeferralInputs.from_dict(data)
-        assert abs(td2.deferred_capital_cost - 5_000_000) < 0.01
-        assert abs(td2.calculate_deferral_pv() - td.calculate_deferral_pv()) < 0.01
+        """Round-trip serialization of TDDeferralSchedule."""
+        schedule = TDDeferralSchedule(tranches=[
+            TDDeferralTranche(deferred_capital_cost=5_000_000, load_growth_rate=0.02, deferral_years=3),
+        ])
+        data = schedule.to_dict()
+        schedule2 = TDDeferralSchedule.from_dict(data)
+        assert abs(schedule2.tranches[0].deferred_capital_cost - 5_000_000) < 0.01
+        assert abs(schedule2.total_pv(0.08) - schedule.total_pv(0.08)) < 0.01
 
 
 # ---- Multi-Tranche Cohort Tests ----
@@ -1315,11 +1318,11 @@ class TestMultiTranche:
         return Project(basics=basics, technology=tech, costs=costs, benefits=benefits)
 
     def _make_multi_tranche_project(self):
-        """15 MW in 3 tranches: [(2027,5), (2028,5), (2029,5)]."""
+        """15 MW in 3 tranches: 2027/2028/2029, 5 MW each."""
         project = self._make_single_tranche_project()
-        project.build_schedule = BuildSchedule(
-            tranches=[(2027, 5.0), (2028, 5.0), (2029, 5.0)]
-        )
+        project.build_schedule = BuildSchedule(tranches=[
+            BuildTranche(2027, 5.0), BuildTranche(2028, 5.0), BuildTranche(2029, 5.0),
+        ])
         return project
 
     def test_single_tranche_backward_compatible(self):
@@ -1441,12 +1444,9 @@ class TestMultiTranche:
     def test_td_deferral_in_results(self):
         """T&D deferral PV should be included in results."""
         project = self._make_single_tranche_project()
-        project.td_deferral = TDDeferralInputs(
-            deferred_capital_cost=10_000_000,
-            load_growth_rate=0.01,
-            discount_rate=0.07,
-            deferral_years=5,
-        )
+        project.td_deferral = TDDeferralSchedule(tranches=[
+            TDDeferralTranche(deferred_capital_cost=10_000_000, load_growth_rate=0.01, deferral_years=5),
+        ])
         results = calculate_project_economics(project)
         assert results.td_deferral_pv > 0
 
@@ -1463,18 +1463,15 @@ class TestMultiTranche:
     def test_multi_tranche_serialization_roundtrip(self):
         """Project with build_schedule should save/load correctly."""
         project = self._make_multi_tranche_project()
-        project.td_deferral = TDDeferralInputs(
-            deferred_capital_cost=5_000_000,
-            load_growth_rate=0.02,
-            discount_rate=0.08,
-            deferral_years=3,
-        )
+        project.td_deferral = TDDeferralSchedule(tranches=[
+            TDDeferralTranche(deferred_capital_cost=5_000_000, load_growth_rate=0.02, deferral_years=3),
+        ])
         data = project.to_dict()
         loaded = Project.from_dict(data)
         assert loaded.build_schedule is not None
         assert len(loaded.build_schedule.tranches) == 3
         assert loaded.td_deferral is not None
-        assert abs(loaded.td_deferral.deferred_capital_cost - 5_000_000) < 0.01
+        assert abs(loaded.td_deferral.tranches[0].deferred_capital_cost - 5_000_000) < 0.01
 
         # Results should be identical
         r1 = calculate_project_economics(project)

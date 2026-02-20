@@ -505,100 +505,157 @@ class SpecialBenefitInputs:
 
 
 @dataclass
+class BuildTranche:
+    """A single tranche in a phased build schedule.
+
+    Attributes:
+        cod_year: Commercial operation date year (2020–2060).
+        capacity_mw: Nameplate capacity for this tranche (MW).
+        notes: Short label or description (≤50 chars, optional).
+    """
+
+    cod_year: int = 2027
+    capacity_mw: float = 0.0
+    notes: str = ""
+
+    def __post_init__(self):
+        if self.capacity_mw <= 0:
+            raise ValueError(f"capacity_mw must be > 0, got {self.capacity_mw}")
+        if not 2020 <= self.cod_year <= 2060:
+            raise ValueError(f"cod_year must be 2020-2060, got {self.cod_year}")
+
+
+@dataclass
 class BuildSchedule:
     """Phased build schedule for JIT multi-tranche deployment.
 
-    Each tranche represents a cohort of capacity with its own COD year
-    and MW allocation. CapEx for each tranche is determined by the
-    learning curve at its COD year.
+    Each tranche represents a cohort of capacity with its own COD year,
+    MW allocation, and optional notes label. CapEx for each tranche is
+    determined by the learning curve at its COD year.
 
     Attributes:
-        tranches: List of (cod_year, capacity_mw) tuples.
+        tranches: List of BuildTranche objects.
     """
 
-    tranches: List[Tuple[int, float]] = field(default_factory=list)
-
-    def __post_init__(self):
-        for i, (year, mw) in enumerate(self.tranches):
-            if mw <= 0:
-                raise ValueError(f"Tranche {i}: capacity_mw must be > 0, got {mw}")
-            if year < 2020 or year > 2060:
-                raise ValueError(f"Tranche {i}: cod_year must be 2020-2060, got {year}")
+    tranches: List[BuildTranche] = field(default_factory=list)
 
     @property
     def total_capacity_mw(self) -> float:
-        return sum(mw for _, mw in self.tranches)
+        return sum(t.capacity_mw for t in self.tranches)
 
     @property
     def first_cod_year(self) -> int:
-        return min(y for y, _ in self.tranches) if self.tranches else 0
+        return min(t.cod_year for t in self.tranches) if self.tranches else 0
 
     @property
     def last_cod_year(self) -> int:
-        return max(y for y, _ in self.tranches) if self.tranches else 0
+        return max(t.cod_year for t in self.tranches) if self.tranches else 0
 
     def to_dict(self) -> dict:
         return {
-            "tranches": [{"cod_year": y, "capacity_mw": mw} for y, mw in self.tranches],
+            "tranches": [
+                {"cod_year": t.cod_year, "capacity_mw": t.capacity_mw, "notes": t.notes}
+                for t in self.tranches
+            ],
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "BuildSchedule":
-        tranches = [(t["cod_year"], t["capacity_mw"]) for t in data.get("tranches", [])]
+        tranches = [
+            BuildTranche(
+                cod_year=t["cod_year"],
+                capacity_mw=t["capacity_mw"],
+                notes=t.get("notes", ""),
+            )
+            for t in data.get("tranches", [])
+        ]
         return cls(tranches=tranches)
 
 
 @dataclass
-class TDDeferralInputs:
-    """T&D Capital Deferral inputs for phased deployment benefit.
+class TDDeferralTranche:
+    """A single T&D capital deferral tranche.
 
     Formula: PV = K * [1 - ((1+g)/(1+r))^n]
 
     Attributes:
         deferred_capital_cost: K - total deferred T&D capital cost ($).
-        load_growth_rate: g - annual load growth rate (decimal).
-        discount_rate: r - discount rate for T&D deferral PV (decimal).
         deferral_years: n - number of years the capital spend is deferred.
+        load_growth_rate: g - annual load growth rate (decimal).
+        notes: Short label or description (≤50 chars, optional).
     """
 
     deferred_capital_cost: float = 0.0
-    load_growth_rate: float = 0.01
-    discount_rate: float = 0.07
     deferral_years: int = 5
+    load_growth_rate: float = 0.01
+    notes: str = ""
 
     def __post_init__(self):
         if self.deferred_capital_cost < 0:
             raise ValueError(f"deferred_capital_cost must be >= 0, got {self.deferred_capital_cost}")
         if not 0 <= self.load_growth_rate <= 0.20:
             raise ValueError(f"load_growth_rate must be 0-0.20, got {self.load_growth_rate}")
-        if not 0 < self.discount_rate < 1:
-            raise ValueError(f"discount_rate must be between 0 and 1, got {self.discount_rate}")
         if self.deferral_years < 0:
             raise ValueError(f"deferral_years must be >= 0, got {self.deferral_years}")
 
-    def calculate_deferral_pv(self) -> float:
-        """Calculate T&D deferral present value.
+    def calculate_deferral_pv(self, discount_rate: float) -> float:
+        """Calculate T&D deferral present value for this tranche.
 
         PV = K * [1 - ((1+g)/(1+r))^n]
+
+        Args:
+            discount_rate: Project discount rate (r).
         """
         if self.deferred_capital_cost <= 0 or self.deferral_years <= 0:
             return 0.0
-        ratio = (1 + self.load_growth_rate) / (1 + self.discount_rate)
+        ratio = (1 + self.load_growth_rate) / (1 + discount_rate)
         return self.deferred_capital_cost * (1 - ratio ** self.deferral_years)
 
     def to_dict(self) -> dict:
         return {
             "deferred_capital_cost": self.deferred_capital_cost,
-            "load_growth_rate": self.load_growth_rate,
-            "discount_rate": self.discount_rate,
             "deferral_years": self.deferral_years,
+            "load_growth_rate": self.load_growth_rate,
+            "notes": self.notes,
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "TDDeferralInputs":
+    def from_dict(cls, data: dict) -> "TDDeferralTranche":
         valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
-        filtered = {k: v for k, v in data.items() if k in valid_fields}
-        return cls(**filtered)
+        return cls(**{k: v for k, v in data.items() if k in valid_fields})
+
+
+@dataclass
+class TDDeferralSchedule:
+    """Multi-tranche T&D capital deferral schedule.
+
+    Aggregates up to 10 independent deferral tranches, each with its own
+    capital cost, deferral period, and load growth rate. The total PV
+    benefit is the sum of all tranche PV values.
+
+    Attributes:
+        tranches: List of TDDeferralTranche objects.
+    """
+
+    tranches: List[TDDeferralTranche] = field(default_factory=list)
+
+    def total_pv(self, discount_rate: float) -> float:
+        """Sum of PV benefits across all deferral tranches."""
+        return sum(t.calculate_deferral_pv(discount_rate) for t in self.tranches)
+
+    def to_dict(self) -> dict:
+        return {"tranches": [t.to_dict() for t in self.tranches]}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "TDDeferralSchedule":
+        # Backward compat: old single-tranche format has 'deferred_capital_cost' at top level
+        if "deferred_capital_cost" in data:
+            return cls(tranches=[TDDeferralTranche(
+                deferred_capital_cost=data.get("deferred_capital_cost", 0.0),
+                deferral_years=data.get("deferral_years", 5),
+                load_growth_rate=data.get("load_growth_rate", 0.01),
+            )])
+        return cls(tranches=[TDDeferralTranche.from_dict(t) for t in data.get("tranches", [])])
 
 
 @dataclass
@@ -790,7 +847,7 @@ class Project:
     special_benefits: Optional[SpecialBenefitInputs] = None
     uos_inputs: Optional[UOSInputs] = None
     build_schedule: Optional[BuildSchedule] = None
-    td_deferral: Optional[TDDeferralInputs] = None
+    td_deferral: Optional[TDDeferralSchedule] = None
     results: Optional[FinancialResults] = None
     assumption_library: str = ""
     library_version: str = ""
@@ -807,9 +864,9 @@ class Project:
                 and len(self.build_schedule.tranches) > 1)
 
     def get_effective_tranches(self) -> List[Tuple[int, float]]:
-        """Return tranches list; single tranche from basics if no build_schedule."""
+        """Return tranches as (cod_year, capacity_mw) tuples; single tranche from basics if no build_schedule."""
         if self.build_schedule and self.build_schedule.tranches:
-            return list(self.build_schedule.tranches)
+            return [(t.cod_year, t.capacity_mw) for t in self.build_schedule.tranches]
         return [(self.basics.in_service_date.year, self.basics.capacity_mw)]
 
     def to_dict(self) -> dict:
@@ -844,7 +901,7 @@ class Project:
             special_benefits=SpecialBenefitInputs.from_dict(special_benefits_data) if special_benefits_data else None,
             uos_inputs=UOSInputs.from_dict(uos_data) if uos_data else None,
             build_schedule=BuildSchedule.from_dict(build_schedule_data) if build_schedule_data else None,
-            td_deferral=TDDeferralInputs.from_dict(td_deferral_data) if td_deferral_data else None,
+            td_deferral=TDDeferralSchedule.from_dict(td_deferral_data) if td_deferral_data else None,
             results=FinancialResults.from_dict(data["results"]) if data.get("results") else None,
             assumption_library=data.get("assumption_library", ""),
             library_version=data.get("library_version", ""),

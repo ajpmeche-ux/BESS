@@ -30,7 +30,11 @@ from xlsxwriter.utility import xl_rowcol_to_cell
 # =============================================================================
 
 class CellRefs:
-    """Central registry for all Inputs-sheet cell addresses."""
+    """Central registry for all Inputs-sheet cell addresses.
+
+    T&D deferral section expanded to a 10-row table (rows 31–43),
+    shifting all subsequent sections down by 7 rows vs the prior layout.
+    """
 
     # Row 6 — Library selection dropdown
     SELECTED_LIBRARY = 'C6'
@@ -46,74 +50,75 @@ class CellRefs:
     DISCOUNT_RATE   = 'C16'
     OWNERSHIP_TYPE  = 'C17'
 
-    # Row 18 — PHASED BUILD SCHEDULE section header (no blank row after basics)
-    # Row 19 — column headers: Cohort | COD Year | Capacity MW | ITC Rate
-    # Rows 20-29 — 10 tranche data rows  →  Named range: Build_Schedule = C20:E29
+    # Row 18 — PHASED BUILD SCHEDULE section header
+    # Row 19 — column headers: Notes | COD Year | Capacity MW | ITC Rate
+    # Rows 20-29 — 10 tranche data rows  (col B = notes input, C/D/E = data)
+    #              Named range: Build_Schedule = C20:E29
 
-    # Rows 32-36 — T&D Deferral  (section header at row 31, blank at row 30)
-    TD_DEFERRAL_K      = 'C32'
-    TD_DEFERRAL_T_NEED = 'C33'
-    TD_DEFERRAL_N      = 'C34'
-    TD_DEFERRAL_G      = 'C35'
-    TD_DEFERRAL_PV     = 'C36'   # formula
+    # T&D CAPITAL DEFERRAL — 10-row table  (blank at row 30)
+    # Row 31: section header
+    # Row 32: column headers (Tranche | Notes | K | n | g | PV)
+    # Rows 33-42: 10 deferral tranche rows
+    # Row 43: Total PV  →  G43
+    TD_TOTAL_PV = 'G43'   # =SUM(G33:G42)
 
-    # Rows 39-44 — Technology Specs  (section header at row 38, blank at row 37)
-    CHEMISTRY              = 'C39'
-    ROUND_TRIP_EFFICIENCY  = 'C40'
-    ANNUAL_DEGRADATION     = 'C41'
-    CYCLE_LIFE             = 'C42'
-    AUGMENTATION_YEAR      = 'C43'
-    CYCLES_PER_DAY         = 'C44'
+    # Rows 46-51 — Technology Specs  (section header at row 45, blank at row 44)
+    CHEMISTRY              = 'C46'
+    ROUND_TRIP_EFFICIENCY  = 'C47'
+    ANNUAL_DEGRADATION     = 'C48'
+    CYCLE_LIFE             = 'C49'
+    AUGMENTATION_YEAR      = 'C50'
+    CYCLES_PER_DAY         = 'C51'
 
-    # Rows 46-52 — Cost Inputs  (section header at row 45, no blank)
-    CAPEX_PER_KWH    = 'C46'
-    FOM_PER_KW_YEAR  = 'C47'
-    VOM_PER_MWH      = 'C48'
-    AUGMENTATION_COST= 'C49'
-    DECOMMISSIONING  = 'C50'
-    CHARGING_COST    = 'C51'
-    RESIDUAL_VALUE   = 'C52'
+    # Rows 53-59 — Cost Inputs  (section header at row 52, no blank)
+    CAPEX_PER_KWH    = 'C53'
+    FOM_PER_KW_YEAR  = 'C54'
+    VOM_PER_MWH      = 'C55'
+    AUGMENTATION_COST= 'C56'
+    DECOMMISSIONING  = 'C57'
+    CHARGING_COST    = 'C58'
+    RESIDUAL_VALUE   = 'C59'
 
-    # Rows 54-55 — Tax Credits  (section header at row 53, no blank)
-    ITC_BASE_RATE = 'C54'
-    ITC_ADDERS    = 'C55'
+    # Rows 61-62 — Tax Credits  (section header at row 60, no blank)
+    ITC_BASE_RATE = 'C61'
+    ITC_ADDERS    = 'C62'
 
-    # Rows 57-61 — Infrastructure Costs  (section header at row 56, no blank)
-    INTERCONNECTION  = 'C57'
-    LAND             = 'C58'
-    PERMITTING       = 'C59'
-    INSURANCE_PCT    = 'C60'
-    PROPERTY_TAX_PCT = 'C61'
+    # Rows 64-68 — Infrastructure Costs  (section header at row 63, no blank)
+    INTERCONNECTION  = 'C64'
+    LAND             = 'C65'
+    PERMITTING       = 'C66'
+    INSURANCE_PCT    = 'C67'
+    PROPERTY_TAX_PCT = 'C68'
 
-    # Rows 63-68 — Financing Structure  (section header at row 62, no blank)
-    DEBT_PERCENT   = 'C63'
-    INTEREST_RATE  = 'C64'
-    LOAN_TERM      = 'C65'
-    COST_OF_EQUITY = 'C66'
-    TAX_RATE       = 'C67'
-    WACC           = 'C68'   # formula
+    # Rows 70-75 — Financing Structure  (section header at row 69, no blank)
+    DEBT_PERCENT   = 'C70'
+    INTEREST_RATE  = 'C71'
+    LOAN_TERM      = 'C72'
+    COST_OF_EQUITY = 'C73'
+    TAX_RATE       = 'C74'
+    WACC           = 'C75'   # formula
 
-    # Row 69 — blank
-    # Row 70 — BENEFIT STREAMS section header
-    # Row 71 — column headers: Name | $/kW-yr | Escalation | Category | Source
-    # Rows 72-79 — eight benefit streams
-    BENEFIT_RA          = 'C72';  BENEFIT_RA_ESC          = 'D72'
-    BENEFIT_ARBITRAGE   = 'C73';  BENEFIT_ARBITRAGE_ESC   = 'D73'
-    BENEFIT_ANCILLARY   = 'C74';  BENEFIT_ANCILLARY_ESC   = 'D74'
-    BENEFIT_TD          = 'C75';  BENEFIT_TD_ESC          = 'D75'
-    BENEFIT_RESILIENCE  = 'C76';  BENEFIT_RESILIENCE_ESC  = 'D76'
-    BENEFIT_RENEWABLE   = 'C77';  BENEFIT_RENEWABLE_ESC   = 'D77'
-    BENEFIT_GHG         = 'C78';  BENEFIT_GHG_ESC         = 'D78'
-    BENEFIT_VOLTAGE     = 'C79';  BENEFIT_VOLTAGE_ESC     = 'D79'
+    # Row 76 — blank
+    # Row 77 — BENEFIT STREAMS section header
+    # Row 78 — column headers: Name | $/kW-yr | Escalation | Category | Source
+    # Rows 79-86 — eight benefit streams
+    BENEFIT_RA          = 'C79';  BENEFIT_RA_ESC          = 'D79'
+    BENEFIT_ARBITRAGE   = 'C80';  BENEFIT_ARBITRAGE_ESC   = 'D80'
+    BENEFIT_ANCILLARY   = 'C81';  BENEFIT_ANCILLARY_ESC   = 'D81'
+    BENEFIT_TD          = 'C82';  BENEFIT_TD_ESC          = 'D82'
+    BENEFIT_RESILIENCE  = 'C83';  BENEFIT_RESILIENCE_ESC  = 'D83'
+    BENEFIT_RENEWABLE   = 'C84';  BENEFIT_RENEWABLE_ESC   = 'D84'
+    BENEFIT_GHG         = 'C85';  BENEFIT_GHG_ESC         = 'D85'
+    BENEFIT_VOLTAGE     = 'C86';  BENEFIT_VOLTAGE_ESC     = 'D86'
 
-    # Rows 81-82 — Cost Projections  (section header at row 80)
-    LEARNING_RATE  = 'C81'
-    COST_BASE_YEAR = 'C82'
+    # Rows 88-89 — Cost Projections  (section header at row 87)
+    LEARNING_RATE  = 'C88'
+    COST_BASE_YEAR = 'C89'
 
     # Convenience list of benefit (value, escalation) cell pairs for Cash_Flows
     BENEFITS = [
-        ('C72', 'D72'), ('C73', 'D73'), ('C74', 'D74'), ('C75', 'D75'),
-        ('C76', 'D76'), ('C77', 'D77'), ('C78', 'D78'), ('C79', 'D79'),
+        ('C79', 'D79'), ('C80', 'D80'), ('C81', 'D81'), ('C82', 'D82'),
+        ('C83', 'D83'), ('C84', 'D84'), ('C85', 'D85'), ('C86', 'D86'),
     ]
 
 
@@ -259,62 +264,68 @@ def _create_inputs_sheet(wb, ws, f) -> None:
         ws.write(f'F{row}', tip, f['tooltip'])
 
     # ── Phased Build Schedule (rows 18-29) ────────────────────────────────
-    ws.merge_range('B18:F18', 'PHASED BUILD SCHEDULE  (JIT Cohort Model)', f['section'])
-    for col, hdr in enumerate(['Cohort', 'COD Year', 'Capacity (MW)', 'ITC Rate (%)']):
+    ws.merge_range('B18:G18', 'PHASED BUILD SCHEDULE  (JIT Cohort Model)', f['section'])
+    for col, hdr in enumerate(['Notes / Description', 'COD Year', 'Capacity (MW)', 'ITC Rate (%)']):
         ws.write(18, 1 + col, hdr, f['header'])   # row 19 → 0-indexed 18
 
     default_years = [2027, 2028, 2029, 2030, 2031, 2032, 0, 0, 0, 0]
     default_mws   = [20,   20,   20,   20,   20,   0,    0, 0, 0, 0]
     for i in range(10):
         r = 19 + i   # 0-indexed → Excel rows 20-29
-        ws.write(r, 1, f'Tranche {i+1}')
-        ws.write(r, 2, default_years[i], f['input_int'])
-        ws.write(r, 3, default_mws[i],   f['input'])
+        ws.write(r, 1, '', f['input'])                       # col B = notes input
+        ws.write(r, 2, default_years[i], f['input_int'])     # col C = COD Year
+        ws.write(r, 3, default_mws[i],   f['input'])         # col D = Capacity MW
         ws.write_formula(r, 4,
             f'=IF(D{r+1}>0,Inputs!{R.ITC_BASE_RATE}+Inputs!{R.ITC_ADDERS},0)',
-            f['fml_pct'])
+            f['fml_pct'])                                    # col E = ITC Rate
 
     wb.define_name('Build_Schedule', '=Inputs!$C$20:$E$29')
     wb.define_name('Discount_Rate',  f'=Inputs!${R.DISCOUNT_RATE}')
     wb.define_name('Learning_Rate',  f'=Inputs!${R.LEARNING_RATE}')
 
-    # ── T&D Deferral (rows 31-36, blank at 30) ────────────────────────────
-    ws.merge_range('B31:F31', 'T&D CAPITAL DEFERRAL  |  PV = K × [1 − ((1+g)/(1+r))^n]',
+    # ── T&D Deferral — 10-row table (rows 31-43, blank at 30 and 44) ─────
+    ws.set_column('G:G', 16)   # PV column for T&D table
+    ws.merge_range('B31:G31',
+                   'T&D CAPITAL DEFERRAL  |  PV = K × [1 − ((1+g)/(1+r))^n]  '
+                   '(up to 10 independent projects)',
                    f['section'])
-    td_rows = [
-        (32, 'Deferred Capital Cost (K)', R.TD_DEFERRAL_K,      100_000_000, f['input_cur'],
-             'Total traditional wires capital cost deferred ($)'),
-        (33, 'Year Asset Needed (t_need)', R.TD_DEFERRAL_T_NEED, 2032,       f['input_int'],
-             'Calendar year the T&D asset would otherwise be needed'),
-        (34, 'Deferral Period (n years)',  R.TD_DEFERRAL_N,      5,           f['input_int'],
-             'Number of years the traditional investment is deferred'),
-        (35, 'Load Growth Rate (g)',       R.TD_DEFERRAL_G,      0.02,        f['input_pct'],
-             'Annual growth / inflation of the deferred capital cost'),
-    ]
-    for row, label, cell, value, fmt, tip in td_rows:
-        ws.write(f'B{row}', label, f['bold'])
-        ws.write(cell, value, fmt)
-        ws.write(f'F{row}', tip, f['tooltip'])
-    ws.write('B36', 'PV of Deferral Benefit ($)', f['bold'])
-    ws.write_formula(R.TD_DEFERRAL_PV,
-        f'={R.TD_DEFERRAL_K}*(1-((1+{R.TD_DEFERRAL_G})/(1+{R.DISCOUNT_RATE}))^{R.TD_DEFERRAL_N})',
-        f['fml_cur'])
-    ws.write('F36', 'Present value of the T&D deferral benefit — added to Results', f['tooltip'])
+    # Column headers (row 32, 0-indexed 31)
+    for col, hdr in enumerate(['Tranche', 'Notes / Description',
+                                'Capital Cost K ($)', 'Deferral Yrs (n)',
+                                'Growth Rate g (%)', 'PV ($)']):
+        ws.write(31, 1 + col, hdr, f['header'])
 
-    # ── Technology Specs (rows 38-44, blank at 37) ────────────────────────
-    ws.merge_range('B38:F38', 'TECHNOLOGY SPECIFICATIONS', f['section'])
+    td_defaults = [(100_000_000, 5, 0.02)] + [(0, 5, 0.02)] * 9
+    for i in range(10):
+        r = 32 + i   # 0-indexed → Excel rows 33-42
+        er = r + 1   # Excel 1-based row number
+        ws.write(r, 1, f'Project {i+1}')                    # col B = auto label
+        ws.write(r, 2, '', f['input'])                       # col C = notes input
+        ws.write(r, 3, td_defaults[i][0], f['input_cur'])   # col D = K
+        ws.write(r, 4, td_defaults[i][1], f['input_int'])   # col E = n
+        ws.write(r, 5, td_defaults[i][2], f['input_pct'])   # col F = g
+        ws.write_formula(r, 6,
+            f'=IF(D{er}>0,D{er}*(1-((1+F{er})/(1+$C$16))^E{er}),0)',
+            f['fml_cur'])                                    # col G = PV
+
+    # Total PV row (row 43, 0-indexed 42)
+    ws.merge_range('B43:F43', 'TOTAL T&D DEFERRAL PV', f['bold'])
+    ws.write_formula(R.TD_TOTAL_PV, '=SUM(G33:G42)', f['fml_cur'])
+
+    # ── Technology Specs (rows 45-51, blank at 44) ────────────────────────
+    ws.merge_range('B45:F45', 'TECHNOLOGY SPECIFICATIONS', f['section'])
     tech = [
-        (39, 'Battery Chemistry',           R.CHEMISTRY,             'LFP',   f['input'],
+        (46, 'Battery Chemistry',           R.CHEMISTRY,             'LFP',   f['input'],
              'LFP (default) | NMC | Other'),
-        (40, 'Round-Trip Efficiency (RTE)', R.ROUND_TRIP_EFFICIENCY,  0.85,   f['input_pct'],
+        (47, 'Round-Trip Efficiency (RTE)', R.ROUND_TRIP_EFFICIENCY,  0.85,   f['input_pct'],
              'AC-AC efficiency including inverter losses (70–95%)'),
-        (41, 'Annual Degradation Rate',     R.ANNUAL_DEGRADATION,     0.025,  f['input_pct'],
+        (48, 'Annual Degradation Rate',     R.ANNUAL_DEGRADATION,     0.025,  f['input_pct'],
              'Capacity loss per year; 2.5% typical for LFP'),
-        (42, 'Cycle Life (full cycles)',    R.CYCLE_LIFE,             6000,   f['input_int'],
+        (49, 'Cycle Life (full cycles)',    R.CYCLE_LIFE,             6000,   f['input_int'],
              'Number of full-depth cycles before end-of-life'),
-        (43, 'Augmentation Year',           R.AUGMENTATION_YEAR,      12,     f['input_int'],
+        (50, 'Augmentation Year',           R.AUGMENTATION_YEAR,      12,     f['input_int'],
              'Year battery modules are replaced; typically 10–12'),
-        (44, 'Cycles per Day',              R.CYCLES_PER_DAY,         1.0,    f['input'],
+        (51, 'Cycles per Day',              R.CYCLES_PER_DAY,         1.0,    f['input'],
              'Average daily full charge-discharge cycles (0.1–3.0)'),
     ]
     for row, label, cell, value, fmt, tip in tech:
@@ -322,81 +333,81 @@ def _create_inputs_sheet(wb, ws, f) -> None:
         ws.write(cell, value, fmt)
         ws.write(f'F{row}', tip, f['tooltip'])
 
-    # ── Cost Inputs (rows 45-52, no blank) ───────────────────────────────
-    ws.merge_range('B45:F45', 'COST INPUTS — BESS', f['section'])
+    # ── Cost Inputs (rows 52-59, no blank) ───────────────────────────────
+    ws.merge_range('B52:F52', 'COST INPUTS — BESS', f['section'])
     costs = [
-        (46, 'CapEx ($/kWh)',                R.CAPEX_PER_KWH,    160,  f['input_cur'], '$130–200/kWh utility-scale LFP'),
-        (47, 'Fixed O&M ($/kW-year)',        R.FOM_PER_KW_YEAR,   25,  f['input_cur'], 'Site maintenance, monitoring, security'),
-        (48, 'Variable O&M ($/MWh)',         R.VOM_PER_MWH,        0,  f['input_cur'], 'Per-MWh discharge cost; often $0 for LFP'),
-        (49, 'Augmentation Cost ($/kWh)',    R.AUGMENTATION_COST,  55,  f['input_cur'], 'Battery module replacement; learning-curve adjusted'),
-        (50, 'Decommissioning ($/kW)',       R.DECOMMISSIONING,    10,  f['input_cur'], 'End-of-life removal and site restoration'),
-        (51, 'Charging Cost ($/MWh)',        R.CHARGING_COST,      30,  f['input_cur'], 'Grid electricity cost for charging cycles'),
-        (52, 'Residual Value (% of CapEx)',  R.RESIDUAL_VALUE,    0.10, f['input_pct'], 'Salvage value at end of analysis period'),
+        (53, 'CapEx ($/kWh)',                R.CAPEX_PER_KWH,    160,  f['input_cur'], '$130–200/kWh utility-scale LFP'),
+        (54, 'Fixed O&M ($/kW-year)',        R.FOM_PER_KW_YEAR,   25,  f['input_cur'], 'Site maintenance, monitoring, security'),
+        (55, 'Variable O&M ($/MWh)',         R.VOM_PER_MWH,        0,  f['input_cur'], 'Per-MWh discharge cost; often $0 for LFP'),
+        (56, 'Augmentation Cost ($/kWh)',    R.AUGMENTATION_COST,  55,  f['input_cur'], 'Battery module replacement; learning-curve adjusted'),
+        (57, 'Decommissioning ($/kW)',       R.DECOMMISSIONING,    10,  f['input_cur'], 'End-of-life removal and site restoration'),
+        (58, 'Charging Cost ($/MWh)',        R.CHARGING_COST,      30,  f['input_cur'], 'Grid electricity cost for charging cycles'),
+        (59, 'Residual Value (% of CapEx)',  R.RESIDUAL_VALUE,    0.10, f['input_pct'], 'Salvage value at end of analysis period'),
     ]
     for row, label, cell, value, fmt, tip in costs:
         ws.write(f'B{row}', label, f['bold'])
         ws.write(cell, value, fmt)
         ws.write(f'F{row}', tip, f['tooltip'])
 
-    # ── Tax Credits (rows 53-55, no blank) ────────────────────────────────
-    ws.merge_range('B53:F53', 'INVESTMENT TAX CREDIT — BESS-Specific (IRA 2022)', f['section'])
-    ws.write('B54', 'ITC Base Rate',   f['bold']); ws.write(R.ITC_BASE_RATE, 0.30, f['input_pct'])
-    ws.write('F54', '30% base rate for standalone storage under IRA', f['tooltip'])
-    ws.write('B55', 'ITC Adders',      f['bold']); ws.write(R.ITC_ADDERS, 0.00, f['input_pct'])
-    ws.write('F55', 'Energy community +10%, Domestic content +10%, Low-income +10–20%', f['tooltip'])
+    # ── Tax Credits (rows 60-62, no blank) ────────────────────────────────
+    ws.merge_range('B60:F60', 'INVESTMENT TAX CREDIT — BESS-Specific (IRA 2022)', f['section'])
+    ws.write('B61', 'ITC Base Rate',   f['bold']); ws.write(R.ITC_BASE_RATE, 0.30, f['input_pct'])
+    ws.write('F61', '30% base rate for standalone storage under IRA', f['tooltip'])
+    ws.write('B62', 'ITC Adders',      f['bold']); ws.write(R.ITC_ADDERS, 0.00, f['input_pct'])
+    ws.write('F62', 'Energy community +10%, Domestic content +10%, Low-income +10–20%', f['tooltip'])
 
-    # ── Infrastructure Costs (rows 56-61) ─────────────────────────────────
-    ws.merge_range('B56:F56', 'INFRASTRUCTURE COSTS — Common to All Utility Projects', f['section'])
+    # ── Infrastructure Costs (rows 63-68) ─────────────────────────────────
+    ws.merge_range('B63:F63', 'INFRASTRUCTURE COSTS — Common to All Utility Projects', f['section'])
     infra = [
-        (57, 'Interconnection ($/kW)',  R.INTERCONNECTION,  100,   f['input_cur'], 'Network upgrades, studies, metering'),
-        (58, 'Land ($/kW)',             R.LAND,              10,   f['input_cur'], 'Site acquisition or capitalized lease'),
-        (59, 'Permitting ($/kW)',       R.PERMITTING,        15,   f['input_cur'], 'Environmental review, permits, legal'),
-        (60, 'Insurance (% of CapEx)',  R.INSURANCE_PCT,    0.005, f['input_pct'], 'Annual property & liability insurance'),
-        (61, 'Property Tax (% of book)',R.PROPERTY_TAX_PCT, 0.010, f['input_pct'], 'Annual property tax on net book value'),
+        (64, 'Interconnection ($/kW)',  R.INTERCONNECTION,  100,   f['input_cur'], 'Network upgrades, studies, metering'),
+        (65, 'Land ($/kW)',             R.LAND,              10,   f['input_cur'], 'Site acquisition or capitalized lease'),
+        (66, 'Permitting ($/kW)',       R.PERMITTING,        15,   f['input_cur'], 'Environmental review, permits, legal'),
+        (67, 'Insurance (% of CapEx)',  R.INSURANCE_PCT,    0.005, f['input_pct'], 'Annual property & liability insurance'),
+        (68, 'Property Tax (% of book)',R.PROPERTY_TAX_PCT, 0.010, f['input_pct'], 'Annual property tax on net book value'),
     ]
     for row, label, cell, value, fmt, tip in infra:
         ws.write(f'B{row}', label, f['bold'])
         ws.write(cell, value, fmt)
         ws.write(f'F{row}', tip, f['tooltip'])
 
-    # ── Financing Structure (rows 62-68) ─────────────────────────────────
-    ws.merge_range('B62:F62', 'FINANCING STRUCTURE  (overrides Discount Rate for WACC)', f['section'])
+    # ── Financing Structure (rows 69-75) ─────────────────────────────────
+    ws.merge_range('B69:F69', 'FINANCING STRUCTURE  (overrides Discount Rate for WACC)', f['section'])
     fin = [
-        (63, 'Debt Financing (%)',    R.DEBT_PERCENT,   0.60, f['input_pct'], '60% debt / 40% equity typical utility'),
-        (64, 'Interest Rate on Debt', R.INTEREST_RATE,  0.045,f['input_pct'], 'Annual debt interest rate'),
-        (65, 'Loan Term (years)',     R.LOAN_TERM,      15,   f['input_int'], 'Amortization period'),
-        (66, 'Cost of Equity',        R.COST_OF_EQUITY, 0.10, f['input_pct'], 'Required equity return'),
-        (67, 'Corporate Tax Rate',    R.TAX_RATE,       0.21, f['input_pct'], '21% federal; add state if applicable'),
+        (70, 'Debt Financing (%)',    R.DEBT_PERCENT,   0.60, f['input_pct'], '60% debt / 40% equity typical utility'),
+        (71, 'Interest Rate on Debt', R.INTEREST_RATE,  0.045,f['input_pct'], 'Annual debt interest rate'),
+        (72, 'Loan Term (years)',     R.LOAN_TERM,      15,   f['input_int'], 'Amortization period'),
+        (73, 'Cost of Equity',        R.COST_OF_EQUITY, 0.10, f['input_pct'], 'Required equity return'),
+        (74, 'Corporate Tax Rate',    R.TAX_RATE,       0.21, f['input_pct'], '21% federal; add state if applicable'),
     ]
     for row, label, cell, value, fmt, tip in fin:
         ws.write(f'B{row}', label, f['bold'])
         ws.write(cell, value, fmt)
         ws.write(f'F{row}', tip, f['tooltip'])
-    ws.write('B68', 'Calculated WACC', f['bold'])
+    ws.write('B75', 'Calculated WACC', f['bold'])
     ws.write_formula(R.WACC,
         f'=(1-{R.DEBT_PERCENT})*{R.COST_OF_EQUITY}+{R.DEBT_PERCENT}*{R.INTEREST_RATE}*(1-{R.TAX_RATE})',
         f['fml_pct'])
-    ws.write('F68', 'WACC = (E/V)×Re + (D/V)×Rd×(1-Tc)  — use this as Discount Rate', f['tooltip'])
+    ws.write('F75', 'WACC = (E/V)×Re + (D/V)×Rd×(1-Tc)  — use this as Discount Rate', f['tooltip'])
 
-    # ── Benefit Streams (rows 70-79, blank at 69) ─────────────────────────
-    ws.merge_range('B70:F70', 'ANNUAL BENEFIT STREAMS  ($/kW-year, Year 1)', f['section'])
+    # ── Benefit Streams (rows 77-86, blank at 76) ─────────────────────────
+    ws.merge_range('B77:F77', 'ANNUAL BENEFIT STREAMS  ($/kW-year, Year 1)', f['section'])
     for col, hdr in enumerate(['Benefit Name', '$/kW-yr (Y1)', 'Escalation/yr',
                                 'Category', 'Source']):
-        ws.write(70, 1 + col, hdr, f['header'])   # row 71 → 0-indexed 70
+        ws.write(77, 1 + col, hdr, f['header'])   # row 78 → 0-indexed 77
 
     benefit_data = [
         # (row, name, $/kW, esc, category, source)
-        (72, 'Resource Adequacy',       150, 0.020, 'Common',        'CPUC RA Program D.24-06-050'),
-        (73, 'Energy Arbitrage',         40, 0.020, 'Common',        'CAISO OASIS historical LMPs'),
-        (74, 'Ancillary Services',       15, 0.010, 'Common',        'CAISO AS market data'),
-        (75, 'T&D Deferral',             25, 0.015, 'Common',        'CPUC Avoided Cost Calculator'),
-        (76, 'Resilience Value',         50, 0.020, 'Common',        'LBNL ICE Calculator'),
-        (77, 'Renewable Integration',    25, 0.025, 'BESS-Specific', 'CAISO Curtailment Reports'),
-        (78, 'GHG Emissions Value',      15, 0.030, 'BESS-Specific', 'EPA Social Cost of Carbon'),
-        (79, 'Voltage Support',          10, 0.010, 'Common',        'EPRI Distribution Studies'),
+        (79, 'Resource Adequacy',       150, 0.020, 'Common',        'CPUC RA Program D.24-06-050'),
+        (80, 'Energy Arbitrage',         40, 0.020, 'Common',        'CAISO OASIS historical LMPs'),
+        (81, 'Ancillary Services',       15, 0.010, 'Common',        'CAISO AS market data'),
+        (82, 'T&D Deferral',             25, 0.015, 'Common',        'CPUC Avoided Cost Calculator'),
+        (83, 'Resilience Value',         50, 0.020, 'Common',        'LBNL ICE Calculator'),
+        (84, 'Renewable Integration',    25, 0.025, 'BESS-Specific', 'CAISO Curtailment Reports'),
+        (85, 'GHG Emissions Value',      15, 0.030, 'BESS-Specific', 'EPA Social Cost of Carbon'),
+        (86, 'Voltage Support',          10, 0.010, 'Common',        'EPRI Distribution Studies'),
     ]
-    val_cell  = ['C72','C73','C74','C75','C76','C77','C78','C79']
-    esc_cell  = ['D72','D73','D74','D75','D76','D77','D78','D79']
+    val_cell  = ['C79','C80','C81','C82','C83','C84','C85','C86']
+    esc_cell  = ['D79','D80','D81','D82','D83','D84','D85','D86']
     for i, (row, name, val, esc, cat, src) in enumerate(benefit_data):
         r = row - 1   # 0-indexed
         ws.write(r, 1, name)
@@ -405,14 +416,14 @@ def _create_inputs_sheet(wb, ws, f) -> None:
         ws.write(r, 4, cat)
         ws.write(r, 5, src, f['tooltip'])
 
-    # ── Cost Projections (rows 80-82) ─────────────────────────────────────
-    ws.merge_range('B80:F80', 'COST PROJECTIONS — Technology Learning Curve', f['section'])
-    ws.write('B81', 'Annual Cost Decline Rate', f['bold'])
+    # ── Cost Projections (rows 87-89) ─────────────────────────────────────
+    ws.merge_range('B87:F87', 'COST PROJECTIONS — Technology Learning Curve', f['section'])
+    ws.write('B88', 'Annual Cost Decline Rate', f['bold'])
     ws.write(R.LEARNING_RATE, 0.12, f['input_pct'])
-    ws.write('F81', '12% per NREL ATB 2024 — applied to augmentation & multi-tranche CapEx', f['tooltip'])
-    ws.write('B82', 'Cost Base Year', f['bold'])
+    ws.write('F88', '12% per NREL ATB 2024 — applied to augmentation & multi-tranche CapEx', f['tooltip'])
+    ws.write('B89', 'Cost Base Year', f['bold'])
     ws.write(R.COST_BASE_YEAR, 2024, f['input_int'])
-    ws.write('F82', 'Reference year for base CapEx and augmentation costs', f['tooltip'])
+    ws.write('F89', 'Reference year for base CapEx and augmentation costs', f['tooltip'])
 
 
 # =============================================================================
@@ -695,16 +706,16 @@ def _create_results_sheet(ws, f, cf) -> None:
         # (label, formula, fmt_key, benchmark, interpretation)
         ('Net Present Value (NPV)',
          f"=SUM(Cash_Flows!{pv_n_col}{d0}:Cash_Flows!{pv_n_col}{dn})"
-         f"+Inputs!{R.TD_DEFERRAL_PV}",
+         f"+Inputs!{R.TD_TOTAL_PV}",
          'result_big', '> $0', 'Positive NPV creates shareholder/ratepayer value'),
 
         ('T&D Deferral PV',
-         f"=Inputs!{R.TD_DEFERRAL_PV}",
+         f"=Inputs!{R.TD_TOTAL_PV}",
          'result_big', '—', 'Present value of deferred T&D capital investment'),
 
         ('Total Project Value',
          f"=SUM(Cash_Flows!{pv_n_col}{d0}:Cash_Flows!{pv_n_col}{dn})"
-         f"+Inputs!{R.TD_DEFERRAL_PV}",
+         f"+Inputs!{R.TD_TOTAL_PV}",
          'result_big', '> $0', 'NPV inclusive of T&D deferral benefit'),
 
         ('Benefit-Cost Ratio (BCR)',
@@ -780,7 +791,7 @@ def _create_sensitivity_sheet(ws, f, cf) -> None:
 
     pv_n_col = col_ltr(COL['pv_n'])
     base_npv = (f"SUM(Cash_Flows!{pv_n_col}{d0}:Cash_Flows!{pv_n_col}{dn})"
-                f"+Inputs!{R.TD_DEFERRAL_PV}")
+                f"+Inputs!{R.TD_TOTAL_PV}")
 
     ws.merge_range('B2:H2', 'SENSITIVITY ANALYSIS — Tornado Chart Parameters', f['title'])
     ws.merge_range('B3:H3',

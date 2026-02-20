@@ -6,7 +6,7 @@ Messages describe errors or warnings for user display.
 
 from typing import List, Tuple
 
-from src.models.project import BuildSchedule, Project, TDDeferralInputs
+from src.models.project import BuildSchedule, Project, TDDeferralSchedule
 
 
 def validate_capacity(capacity_mw: float) -> Tuple[bool, str]:
@@ -103,21 +103,22 @@ def validate_build_schedule(schedule: BuildSchedule, capacity_mw: float) -> Tupl
     return True, ""
 
 
-def validate_td_deferral(td: TDDeferralInputs) -> Tuple[bool, str]:
-    """Validate T&D deferral inputs.
+def validate_td_deferral(td: TDDeferralSchedule) -> Tuple[bool, str]:
+    """Validate T&D deferral schedule inputs.
 
     Args:
-        td: T&D deferral inputs to validate.
+        td: T&D deferral schedule to validate.
 
     Returns:
         (is_valid, message) tuple.
     """
-    if not td:
+    if not td or not td.tranches:
         return True, ""
-    if td.deferred_capital_cost < 0:
-        return False, "Deferred capital cost must be >= 0."
-    if td.load_growth_rate >= td.discount_rate:
-        return True, "Warning: Load growth rate >= discount rate makes deferral PV negative."
+    for i, tranche in enumerate(td.tranches):
+        if tranche.deferred_capital_cost < 0:
+            return False, f"Deferral tranche {i + 1}: capital cost must be >= 0."
+        if tranche.load_growth_rate < 0 or tranche.load_growth_rate > 0.20:
+            return False, f"Deferral tranche {i + 1}: load growth rate must be 0–20%."
     return True, ""
 
 

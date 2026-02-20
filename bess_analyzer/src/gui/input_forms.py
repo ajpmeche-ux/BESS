@@ -35,7 +35,9 @@ from src.models.project import (
     Project,
     ProjectBasics,
     SpecialBenefitInputs,
-    TDDeferralInputs,
+    BuildTranche,
+    TDDeferralSchedule,
+    TDDeferralTranche,
     TechnologySpecs,
     UOSInputs,
 )
@@ -672,50 +674,50 @@ class InputFormWidget(QWidget):
         group = QGroupBox("Phased Build Schedule (JIT Cohorts)")
         layout = QVBoxLayout(group)
 
-        self.build_schedule_table = QTableWidget(10, 3)  # 10 rows for cohorts
+        self.build_schedule_table = QTableWidget(10, 4)  # 10 rows: Notes, COD Year, Capacity, ITC
         self.build_schedule_table.setHorizontalHeaderLabels(
-            ["COD (Year)", "Capacity (MW)", "ITC Rate (%)"]
+            ["Notes / Description", "COD (Year)", "Capacity (MW)", "ITC Rate (%)"]
         )
         header = self.build_schedule_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self.build_schedule_table.setMinimumHeight(280)
 
         # Populate with default empty rows
         for row in range(10):
-            self.build_schedule_table.setItem(row, 0, QTableWidgetItem("0"))
-            self.build_schedule_table.setItem(row, 1, QTableWidgetItem("0.0"))
-            self.build_schedule_table.setItem(row, 2, QTableWidgetItem("30.0"))
+            self.build_schedule_table.setItem(row, 0, QTableWidgetItem(""))
+            self.build_schedule_table.setItem(row, 1, QTableWidgetItem("0"))
+            self.build_schedule_table.setItem(row, 2, QTableWidgetItem("0.0"))
+            self.build_schedule_table.setItem(row, 3, QTableWidgetItem("30.0"))
 
         layout.addWidget(self.build_schedule_table)
         return group
 
     def _create_td_deferral_section(self) -> QGroupBox:
-        """Creates the UI section for T&D capital deferral inputs."""
-        group = QGroupBox("T&D Capital Deferral")
+        """Creates the UI section for multi-tranche T&D capital deferral inputs."""
+        group = QGroupBox("T&D Capital Deferral (up to 10 tranches)")
         layout = QVBoxLayout(group)
 
-        self.td_capital_cost_spin = QDoubleSpinBox()
-        self.td_capital_cost_spin.setRange(0, 1_000_000_000)
-        self.td_capital_cost_spin.setValue(100_000_000)
-        self.td_capital_cost_spin.setPrefix("$")
-        self.td_capital_cost_spin.setDecimals(0)
-        layout.addLayout(self._row("Capital Cost (K):", self.td_capital_cost_spin))
+        self.td_deferral_table = QTableWidget(10, 4)
+        self.td_deferral_table.setHorizontalHeaderLabels(
+            ["Notes / Description", "Capital Cost K ($)", "Deferral Yrs (n)", "Growth Rate g (%)"]
+        )
+        hdr = self.td_deferral_table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.td_deferral_table.setMinimumHeight(280)
 
-        self.td_deferral_years_spin = QSpinBox()
-        self.td_deferral_years_spin.setRange(0, 20)
-        self.td_deferral_years_spin.setValue(5)
-        self.td_deferral_years_spin.setSuffix(" years")
-        layout.addLayout(self._row("Deferral Period (n):", self.td_deferral_years_spin))
+        for row in range(10):
+            self.td_deferral_table.setItem(row, 0, QTableWidgetItem(""))
+            self.td_deferral_table.setItem(row, 1, QTableWidgetItem("0"))
+            self.td_deferral_table.setItem(row, 2, QTableWidgetItem("5"))
+            self.td_deferral_table.setItem(row, 3, QTableWidgetItem("2.0"))
 
-        self.td_growth_rate_spin = QDoubleSpinBox()
-        self.td_growth_rate_spin.setRange(0, 10.0)
-        self.td_growth_rate_spin.setValue(2.0)
-        self.td_growth_rate_spin.setSuffix(" %")
-        self.td_growth_rate_spin.setDecimals(1)
-        layout.addLayout(self._row("Growth Rate (g):", self.td_growth_rate_spin))
-
+        layout.addWidget(self.td_deferral_table)
         return group
 
     def _toggle_uos(self, state):
@@ -895,25 +897,34 @@ class InputFormWidget(QWidget):
 
         # Build Schedule
         if project.build_schedule:
-            # Clear table before loading
+            # Clear table before loading (4 columns: Notes, COD Year, Capacity, ITC)
             for row in range(self.build_schedule_table.rowCount()):
-                self.build_schedule_table.setItem(row, 0, QTableWidgetItem("0"))
-                self.build_schedule_table.setItem(row, 1, QTableWidgetItem("0.0"))
+                self.build_schedule_table.setItem(row, 0, QTableWidgetItem(""))
+                self.build_schedule_table.setItem(row, 1, QTableWidgetItem("0"))
                 self.build_schedule_table.setItem(row, 2, QTableWidgetItem("0.0"))
+                self.build_schedule_table.setItem(row, 3, QTableWidgetItem("0.0"))
 
-            for i, (cod_year, capacity_mw) in enumerate(project.build_schedule.tranches):
+            for i, tranche in enumerate(project.build_schedule.tranches):
                 if i < self.build_schedule_table.rowCount():
-                    self.build_schedule_table.setItem(i, 0, QTableWidgetItem(str(cod_year)))
-                    self.build_schedule_table.setItem(i, 1, QTableWidgetItem(str(capacity_mw)))
-                    # ITC rate is not stored per-tranche in the model, so use main rate
+                    self.build_schedule_table.setItem(i, 0, QTableWidgetItem(tranche.notes))
+                    self.build_schedule_table.setItem(i, 1, QTableWidgetItem(str(tranche.cod_year)))
+                    self.build_schedule_table.setItem(i, 2, QTableWidgetItem(str(tranche.capacity_mw)))
                     total_itc = (project.costs.itc_percent + project.costs.itc_adders) * 100
-                    self.build_schedule_table.setItem(i, 2, QTableWidgetItem(f"{total_itc:.1f}"))
+                    self.build_schedule_table.setItem(i, 3, QTableWidgetItem(f"{total_itc:.1f}"))
 
         # T&D Deferral
         if project.td_deferral:
-            self.td_capital_cost_spin.setValue(project.td_deferral.deferred_capital_cost)
-            self.td_deferral_years_spin.setValue(project.td_deferral.deferral_years)
-            self.td_growth_rate_spin.setValue(project.td_deferral.load_growth_rate * 100)
+            for row in range(self.td_deferral_table.rowCount()):
+                self.td_deferral_table.setItem(row, 0, QTableWidgetItem(""))
+                self.td_deferral_table.setItem(row, 1, QTableWidgetItem("0"))
+                self.td_deferral_table.setItem(row, 2, QTableWidgetItem("5"))
+                self.td_deferral_table.setItem(row, 3, QTableWidgetItem("2.0"))
+            for i, tranche in enumerate(project.td_deferral.tranches):
+                if i < self.td_deferral_table.rowCount():
+                    self.td_deferral_table.setItem(i, 0, QTableWidgetItem(tranche.notes))
+                    self.td_deferral_table.setItem(i, 1, QTableWidgetItem(str(tranche.deferred_capital_cost)))
+                    self.td_deferral_table.setItem(i, 2, QTableWidgetItem(str(tranche.deferral_years)))
+                    self.td_deferral_table.setItem(i, 3, QTableWidgetItem(f"{tranche.load_growth_rate * 100:.2f}"))
 
         for benefit in project.benefits:
             row = self.benefits_table.rowCount()
@@ -1045,29 +1056,44 @@ class InputFormWidget(QWidget):
                 sod_min_hours=self.uos_sod_hours_spin.value(),
             )
 
-        # Build schedule
+        # Build schedule (columns: 0=Notes, 1=COD Year, 2=Capacity MW, 3=ITC Rate)
         tranches = []
         for row in range(self.build_schedule_table.rowCount()):
             try:
-                cod_item = self.build_schedule_table.item(row, 0)
-                cap_item = self.build_schedule_table.item(row, 1)
-
+                notes_item = self.build_schedule_table.item(row, 0)
+                cod_item   = self.build_schedule_table.item(row, 1)
+                cap_item   = self.build_schedule_table.item(row, 2)
                 if cod_item and cap_item and cod_item.text() and cap_item.text():
                     cod = int(cod_item.text())
                     cap = float(cap_item.text())
-                    if cap > 0:  # Only add cohorts with capacity
-                        tranches.append((cod, cap))
+                    if cap > 0:
+                        notes = notes_item.text() if notes_item else ""
+                        tranches.append(BuildTranche(cod_year=cod, capacity_mw=cap, notes=notes))
             except (ValueError, AttributeError):
-                continue # Skip empty or invalid rows
+                continue
         build_schedule = BuildSchedule(tranches=tranches) if tranches else None
 
-        # T&D Deferral
-        td_deferral = TDDeferralInputs(
-            deferred_capital_cost=self.td_capital_cost_spin.value(),
-            deferral_years=self.td_deferral_years_spin.value(),
-            load_growth_rate=self.td_growth_rate_spin.value() / 100,
-            discount_rate=basics.discount_rate,
-        )
+        # T&D Deferral (columns: 0=Notes, 1=K, 2=n years, 3=g %)
+        td_tranches = []
+        for row in range(self.td_deferral_table.rowCount()):
+            try:
+                notes_item = self.td_deferral_table.item(row, 0)
+                k_item     = self.td_deferral_table.item(row, 1)
+                n_item     = self.td_deferral_table.item(row, 2)
+                g_item     = self.td_deferral_table.item(row, 3)
+                if k_item and k_item.text():
+                    k = float(k_item.text().replace(",", ""))
+                    if k > 0:
+                        n = int(n_item.text()) if n_item and n_item.text() else 5
+                        g = float(g_item.text()) / 100 if g_item and g_item.text() else 0.02
+                        notes = notes_item.text() if notes_item else ""
+                        td_tranches.append(TDDeferralTranche(
+                            deferred_capital_cost=k, deferral_years=n,
+                            load_growth_rate=g, notes=notes,
+                        ))
+            except (ValueError, AttributeError):
+                continue
+        td_deferral = TDDeferralSchedule(tranches=td_tranches) if td_tranches else None
 
         return Project(
             basics=basics,

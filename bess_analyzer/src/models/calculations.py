@@ -19,7 +19,7 @@ from src.models.project import (
     Project,
     ProjectBasics,
     SpecialBenefitInputs,
-    TDDeferralInputs,
+    TDDeferralSchedule,
     TechnologySpecs,
     UOSInputs,
 )
@@ -476,7 +476,7 @@ def calculate_project_economics(project: Project) -> FinancialResults:
     # T&D deferral PV
     td_pv = 0.0
     if project.td_deferral:
-        td_pv = project.td_deferral.calculate_deferral_pv()
+        td_pv = project.td_deferral.total_pv(r)
 
     # Flexibility value (multi-tranche only)
     flex_value = 0.0
